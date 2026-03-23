@@ -1,0 +1,54 @@
+# ======================
+# Python
+# ======================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.egg
+*.egg-info/
+*.dist-info/
+*.log
+*.sqlite3
+
+# ======================
+# Virtual Environment
+# ======================
+venv/
+env/
+ENV/
+.venv/
+
+# ======================
+# Jupyter Notebook
+# ======================
+.ipynb_checkpoints/
+
+# ======================
+# Streamlit / Web
+# ======================
+*.db
+*.streamlit/
+*.cache/
+*.session/
+
+# ======================
+# IDE / Editor
+# ======================
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ======================
+# Mac / Windows
+# ======================
+.DS_Store
+Thumbs.db
+
+# ======================
+# LangChain / Ollama temporary / cache
+# ======================
+langchain_cache/
+ollama_cache/

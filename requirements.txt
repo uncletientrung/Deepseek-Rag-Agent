@@ -1,0 +1,12 @@
+streamlit
+langchain==0.3.16
+langchain-community==0.3.16
+faiss-cpu
+transformers
+pdfplumber
+pypdf
+torch
+numpy
+pandas
+ollama
+sentence-transformers
