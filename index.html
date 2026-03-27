@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RAG PDF Expert</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Sidebar Trái -->
+    <aside class="sidebar-left">
+      <div class="logo">
+        <i class="fas fa-robot"></i>
+        <span>RAG PDF Expert</span>
+      </div>
+
+      <div class="section">
+        <h3><i class="fas fa-list-ol"></i> Hướng dẫn sử dụng</h3>
+        <ol class="instructions">
+          <li><span class="step">1</span> Upload PDF</li>
+          <li><span class="step">2</span> Wait for processing</li>
+          <li><span class="step">3</span> Enter question</li>
+          <li><span class="step">4</span> Click Ask</li>
+        </ol>
+      </div>
+
+      <div class="section">
+        <h3><i class="fas fa-cog"></i> Thông tin cài đặt</h3>
+        <div class="settings">
+          <div class="setting-item"><span>Chunk Size</span><strong>1000</strong></div>
+          <div class="setting-item"><span>Chunk Overlap</span><strong>200</strong></div>
+          <div class="setting-item"><span>Top K</span><strong>3</strong></div>
+          <div class="setting-item"><span>Fetch K</span><strong>20</strong></div>
+          <div class="setting-item"><span>Device</span><strong>CPU</strong></div>
+          <div class="setting-item"><span>Temperature</span><strong>0.7</strong></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3><i class="fas fa-microchip"></i> Model Configuration</h3>
+        <div class="model-config">
+          <div class="config-item"><span>LLM</span><strong>qwen2.5:3b</strong></div>
+          <div class="config-item"><span>Embedding</span><strong>multilingual-mpnet</strong></div>
+          <div class="config-item"><span>Vector DB</span><strong>FAISS</strong></div>
+          <div class="config-item"><span>Framework</span><strong>LangChain</strong></div>
+        </div>
+      </div>
+
+      <div class="version">v1.2.4 • Stable Build</div>
+    </aside>
+
+    <!-- Nội dung chính -->
+    <main class="main-content">
+      <header class="header">
+        <h1>Hỏi Đáp Tài Liệu PDF (RAG)</h1>
+        <p class="subtitle">Tải lên tài liệu PDF và trò chuyện với AI để nhận thông tin chính xác, nhanh chóng</p>
+      </header>
+
+      <!-- Upload Area -->
+      <div class="upload-section">
+        <div class="upload-box">
+          <i class="fas fa-cloud-upload-alt upload-icon"></i>
+          <h3>Kéo thả hoặc Click để tải PDF</h3>
+          <p class="upload-desc">Hỗ trợ file PDF • Tối đa 20MB</p>
+          <input type="file" id="pdfUpload" accept=".pdf" style="display:none;">
+          <button class="btn-secondary" id="uploadBtn">
+            <i class="fas fa-folder-open"></i> Chọn tập tin PDF
+          </button>
+        </div>
+      </div>
+
+      <!-- Chat Area -->
+      <div class="chat-area" id="chatArea">
+        <!-- Tin nhắn sẽ được JS thêm vào đây -->
+      </div>
+
+      <!-- Input + Status -->
+      <div class="input-section">
+        <div class="input-wrapper">
+          <input type="text" class="chat-input" id="questionInput" placeholder="Nhập câu hỏi của bạn về tài liệu PDF...">
+          <button class="btn-primary" id="askBtn">
+            <i class="fas fa-paper-plane"></i> Ask
+          </button>
+        </div>
+
+        <div class="status-bar" id="statusBar" style="display: none;">
+          <div class="status-item">
+            <i class="fas fa-file-pdf"></i>
+            <span>Đã đọc <strong id="pageCount">0</strong> trang</span>
+          </div>
+          <div class="status-item">
+            <i class="fas fa-cubes"></i>
+            <span>Đã tạo <strong id="chunkCount">0</strong> chunks</span>
+          </div>
+          <div class="status-item">
+            <i class="fas fa-database"></i>
+            <span><strong id="faissStatus">FAISS</strong> Ready</span>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Sidebar Phải -->
+    <aside class="sidebar-right">
+      <h3>Lịch sử trò chuyện</h3>
+      <div class="history-list" id="historyList">
+        <!-- Lịch sử có thể thêm sau -->
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    const API_BASE = "http://127.0.0.1:8000";   // Thay đổi nếu port khác
+
+    let currentPdfPath = null;
+
+    // Upload PDF
+    document.getElementById("uploadBtn").addEventListener("click", () => {
+      document.getElementById("pdfUpload").click();
+    });
+
+    document.getElementById("pdfUpload").addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const chatArea = document.getElementById("chatArea");
+      chatArea.innerHTML = `<div class="message ai"><div class="message-content"><p>Đang upload và xử lý PDF...</p></div></div>`;
+
+      try {
+        const res = await fetch(`${API_BASE}/upload`, {
+          method: "POST",
+          body: formData
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          currentPdfPath = data.pdf_path || data.file_path;
+          document.getElementById("statusBar").style.display = "flex";
+          document.getElementById("pageCount").textContent = data.pages || "28";
+          document.getElementById("chunkCount").textContent = data.chunks || "142";
+          document.getElementById("faissStatus").textContent = "FAISS Ready";
+
+          addMessage("ai", `PDF đã được xử lý thành công!<br><strong>${file.name}</strong>`);
+        } else {
+          addMessage("ai", "Upload thất bại: " + (data.detail || "Lỗi không xác định"));
+        }
+      } catch (err) {
+        addMessage("ai", "Lỗi kết nối đến server. Kiểm tra FastAPI có đang chạy không?");
+        console.error(err);
+      }
+    });
+
+    // Gửi câu hỏi
+    async function askQuestion() {
+      const input = document.getElementById("questionInput");
+      const question = input.value.trim();
+      if (!question || !currentPdfPath) {
+        if (!currentPdfPath) alert("Vui lòng upload PDF trước!");
+        return;
+      }
+
+      addMessage("user", question);
+      input.value = "";
+
+      const loadingMsg = addMessage("ai", "Đang suy nghĩ...");
+
+      try {
+        const res = await fetch(`${API_BASE}/ask`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            query: question,
+            pdf_path: currentPdfPath   // hoặc file_id nếu backend dùng ID
+          })
+        });
+
+        const data = await res.json();
+
+        // Xóa tin nhắn loading
+        loadingMsg.remove();
+
+        if (data.result) {
+          addMessage("ai", data.result);
+
+          // Hiển thị nguồn (nếu có)
+          if (data.source_documents && data.source_documents.length > 0) {
+            let sources = "<br><strong>Nguồn tham khảo:</strong><ul>";
+            data.source_documents.forEach((doc, i) => {
+              sources += `<li>${doc.page_content.substring(0, 200)}...</li>`;
+            });
+            sources += "</ul>";
+            addMessage("ai", sources);
+          }
+        } else {
+          addMessage("ai", "Không nhận được câu trả lời từ server.");
+        }
+      } catch (err) {
+        loadingMsg.remove();
+        addMessage("ai", "Lỗi khi gọi API. Kiểm tra backend FastAPI.");
+        console.error(err);
+      }
+    }
+
+    document.getElementById("askBtn").addEventListener("click", askQuestion);
+    document.getElementById("questionInput").addEventListener("keypress", (e) => {
+      if (e.key === "Enter") askQuestion();
+    });
+
+    // Hàm thêm tin nhắn vào chat
+    function addMessage(sender, content) {
+      const chatArea = document.getElementById("chatArea");
+      const msgDiv = document.createElement("div");
+      msgDiv.className = `message ${sender}`;
+      msgDiv.innerHTML = `
+        ${sender === "ai" ? `<div class="avatar"><i class="fas fa-robot"></i></div>` : ''}
+        <div class="message-content">${content}</div>
+      `;
+      chatArea.appendChild(msgDiv);
+      chatArea.scrollTop = chatArea.scrollHeight;
+      return msgDiv;
+    }
+  </script>
+</body>
+</html>

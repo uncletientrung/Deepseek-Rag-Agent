@@ -24,8 +24,8 @@ def build_rag_pipeline(pdf_path: str):
         llm=llm,
         retriever=retriever,
         chain_type="stuff",
-        chain_type_kwargs={"prompt": VIETNAMESE_PROMPT},   # ← Dùng prompt tiếng Việt
-        return_source_documents=True                       # Bật để hiển thị nguồn
+        chain_type_kwargs={"prompt": VIETNAMESE_PROMPT},   # Dùng prompt tiếng Việt
+        return_source_documents=False                       # Bật để hiển thị nguồn
     )
 
     return qa_chain, vectorstore  # trả về cả chain và vectorstore nếu cần
