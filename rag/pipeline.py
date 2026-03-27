@@ -8,7 +8,7 @@ from rag.promt import VIETNAMESE_PROMPT
 def build_rag_pipeline(pdf_path: str):
     """Xây dựng toàn bộ pipeline từ PDF path."""
     # 1. Load & Split
-    chunks = load_and_split_pdf(pdf_path)
+    chunks, documents = load_and_split_pdf(pdf_path)
 
     # 2. Create Vector Store
     vectorstore = create_faiss_vectorstore(chunks)
@@ -28,4 +28,4 @@ def build_rag_pipeline(pdf_path: str):
         return_source_documents=False                       # Bật để hiển thị nguồn
     )
 
-    return qa_chain, vectorstore  # trả về cả chain và vectorstore nếu cần
+    return qa_chain, vectorstore, chunks, documents  # trả về cả chain và vectorstore nếu cần

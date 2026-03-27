@@ -13,4 +13,4 @@ def load_and_split_pdf(pdf_path: str, chunk_size: int = 1000, chunk_overlap: int
         chunk_overlap=chunk_overlap
     )
     chunks = text_splitter.split_documents(documents)
-    return chunks
+    return chunks, documents
