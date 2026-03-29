@@ -10,6 +10,4 @@ numpy
 pandas
 ollama
 sentence-transformers
-fastapi 
-uvicorn 
-python-multipart
+django

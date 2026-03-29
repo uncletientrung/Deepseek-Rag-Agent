@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="vi">
-
+{% load static %}
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RAG PDF Expert</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="{% static 'styles/style.css' %}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 
@@ -112,7 +112,7 @@
     </div>
 
     <script>
-        const API_BASE = "http://127.0.0.1:8000/api";
+        const API_BASE = "";
         let currentPdfPath = null;
 
         const questionInput = document.getElementById("questionInput");
@@ -156,7 +156,7 @@
                 const formData = new FormData();
                 formData.append("file", file);
 
-                const res = await fetch(`${API_BASE}/upload`, {
+                const res = await fetch(`/upload/`, {
                     method: "POST",
                     body: formData
                 });
@@ -164,8 +164,9 @@
                 const data = await res.json();
 
                 if (data.success) {
+                    
                     currentPdfPath = data.pdf_path || data.file_path;
-
+                    console.log("PDF PATH:", currentPdfPath);
                     statusBar.style.display = "flex";
                     document.getElementById("pageCount").textContent = data.pages || "0";
                     document.getElementById("chunkCount").textContent = data.chunks || "0";
@@ -180,7 +181,7 @@
                 }
             } catch (err) {
                 console.error(err);
-                addMessage("ai", "Lỗi kết nối đến server. Kiểm tra FastAPI có đang chạy không?");
+                addMessage("ai", "Không thể kết nối đến Django server.");
                 toggleInput(false);
             }
         });
@@ -196,7 +197,7 @@
             const loadingMsg = addMessage("ai", "Đang suy nghĩ...");
 
             try {
-                const res = await fetch(`${API_BASE}/ask`, {
+                const res = await fetch(`/ask/`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ query: question, pdf_path: currentPdfPath })

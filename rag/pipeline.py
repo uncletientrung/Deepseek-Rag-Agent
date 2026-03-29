@@ -5,6 +5,7 @@ from rag.retriever import get_retriever
 from rag.llm import get_llm
 from rag.promt import VIETNAMESE_PROMPT
 
+
 def build_rag_pipeline(pdf_path: str):
     """Xây dựng toàn bộ pipeline từ PDF path."""
     # 1. Load & Split
@@ -24,8 +25,13 @@ def build_rag_pipeline(pdf_path: str):
         llm=llm,
         retriever=retriever,
         chain_type="stuff",
-        chain_type_kwargs={"prompt": VIETNAMESE_PROMPT},   # Dùng prompt tiếng Việt
-        return_source_documents=False                       # Bật để hiển thị nguồn
+        chain_type_kwargs={"prompt": VIETNAMESE_PROMPT},  # Dùng prompt tiếng Việt
+        return_source_documents=False,  # Bật để hiển thị nguồn
     )
 
-    return qa_chain, vectorstore, chunks, documents  # trả về cả chain và vectorstore nếu cần
+    return (
+        qa_chain,
+        vectorstore,
+        chunks,
+        documents,
+    )  # trả về cả chain và vectorstore nếu cần
