@@ -32,12 +32,15 @@ def upload_pdf(request): # request <WSGIRequest: POST '/upload/'>
         with open(path, "wb+") as f: # Tạo pdf mới trên ổ đĩa dưới dạng nhị phân
             for chunk in file.chunks(): # Ghi từng đoạn nhỏ vào file trong thư mục data dưới dạng binary
                 f.write(chunk)
-
         qa_chain, vectorstore, chunks, documents = build_rag_pipeline(path)
-        rag_chain = qa_chain
-        current_pdf_path = path
+        rag_chain = qa_chain # RetrieverQA
+        current_pdf_path = path # Đường dẫn pdf
         # print(f"QA_CHAIN là cái này: {qa_chain}")
         # print(f"VECTORSTORE là cái này: {vectorstore}")
+        # vec0 = vectorstore.index.reconstruct(0)
+        # print("Vector thứ 0, 10 chiều đầu:", vec0[:10])
+        # print("Số vector:", vectorstore.index.ntotal)
+        # print("Chiều vector:", vectorstore.index.d)
         # print(f"CHUNKS là cái này: {chunks}")
         # print(f"DOCUMENTS là cái này: {documents}")
         return JsonResponse({ 
@@ -49,23 +52,18 @@ def upload_pdf(request): # request <WSGIRequest: POST '/upload/'>
 
 
 @csrf_exempt
-def ask_question(request):
-
+def ask_question(request): # request <WSGIRequest: POST '/ask/'>
+     # urls gọi hàm này thì hàm này nhận request
     global rag_chain
     global current_pdf_path
-
     if request.method == "POST":
-
-        if rag_chain is None:
+        if rag_chain is None: # Kiểm tra RetrieverQA
             return JsonResponse({
                 "result": "Chưa upload PDF"
             })
-
         data = json.loads(request.body)
-
         query = data.get("query")
-
-        result = rag_chain.invoke({
+        result = rag_chain.invoke({ # Đặt câu hỏi và sinh câu trả lời và source_documents nếu bật
             "query": query
         })
 

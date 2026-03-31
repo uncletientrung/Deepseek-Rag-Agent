@@ -6,5 +6,5 @@ def get_embedding_model():
     return HuggingFaceEmbeddings(
         model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2", # Tải model
         model_kwargs={"device": "cpu"}, # Cấu hình CPU
-        encode_kwargs={"normalize_embeddings": True}, # Chuẩn hóa vector
+        encode_kwargs={"normalize_embeddings": True}, # Chuẩn hóa vector về 1 để chính xác
     )

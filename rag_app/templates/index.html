@@ -186,25 +186,20 @@
         async function askQuestion() {
             const question = questionInput.value.trim();
             if (!question || !currentPdfPath) return;
-
             addMessage("user", question);
             questionInput.value = "";
-
-            const loadingMsg = addMessage("ai", "Đang suy nghĩ...");
-
+            const loadingMsg = addMessage("ai", "Đang suy nghĩ..."); // Lưu vào biến để tí xóa
             try {
                 const res = await fetch(`/ask/`, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ query: question, pdf_path: currentPdfPath })
+                    headers: { "Content-Type": "application/json" }, // Khai báo gửi dữ liệu JSON
+                    body: JSON.stringify({ query: question, pdf_path: currentPdfPath }) // Chuyển obj thành json
                 });
 
                 const data = await res.json();
                 loadingMsg.remove();
-
                 if (data.result) {
-                    addMessage("ai", data.result);
-
+                    addMessage("ai", data.result); // Trả lời
                     if (data.source_documents && data.source_documents.length > 0) {
                         let sources = "<br><strong>Nguồn tham khảo:</strong><ul>";
                         data.source_documents.forEach(doc => {
@@ -229,7 +224,6 @@
         });
 
         // Hàm thêm tin nhắn
-        // Hàm thêm tin nhắn - ĐÃ SỬA SCROLL
         function addMessage(sender, content) {
             const chatArea = document.getElementById("chatArea");
             const msgDiv = document.createElement("div");

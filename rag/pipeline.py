@@ -7,26 +7,17 @@ from rag.promt import VIETNAMESE_PROMPT
 
 
 def build_rag_pipeline(pdf_path: str):
-    """Xây dựng toàn bộ pipeline từ PDF path."""
-    # 1. Load & Split
-    chunks, documents = load_and_split_pdf(pdf_path)
+    chunks, documents = load_and_split_pdf(pdf_path) # Load pdf và cắt chunk
+    vectorstore = create_faiss_vectorstore(chunks) # Tạo FAISS obj
+    retriever = get_retriever(vectorstore) # Gán FAISS sang retriever
+    llm = get_llm() # Tạo Ollama
 
-    # 2. Create Vector Store
-    vectorstore = create_faiss_vectorstore(chunks)
-
-    # 3. Retriever
-    retriever = get_retriever(vectorstore)
-
-    # 4. LLM
-    llm = get_llm()
-
-    # 5. Tạo QA Chain với Prompt tiếng Việt
-    qa_chain = RetrievalQA.from_chain_type(
+    qa_chain = RetrievalQA.from_chain_type( 
         llm=llm,
         retriever=retriever,
-        chain_type="stuff",
+        chain_type="stuff", # Nối các chunk lại vảo promt
         chain_type_kwargs={"prompt": VIETNAMESE_PROMPT},  # Dùng prompt tiếng Việt
-        return_source_documents=False,  # Bật để hiển thị nguồn
+        return_source_documents=True,  # Hiển thị nguồn
     )
 
     return (
@@ -34,4 +25,4 @@ def build_rag_pipeline(pdf_path: str):
         vectorstore,
         chunks,
         documents,
-    )  # trả về cả chain và vectorstore nếu cần
+    )
