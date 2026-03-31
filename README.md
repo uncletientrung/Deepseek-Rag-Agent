@@ -52,7 +52,7 @@ views.index                 // Gọi hàm index để render html
     ↓
 index.html                  // Trả về giao diện cho trình duyệt
 
-Upload PDF
+Upload PDF                  
     ↓
 views.upload_pdf
     ↓
