@@ -6,7 +6,7 @@ from rag.embedding import get_embedding_model
 
 def create_faiss_vectorstore(chunks: List[Document]):
     """Tạo FAISS vector store từ list chunks."""
-    embeddings = get_embedding_model()
+    embeddings = get_embedding_model() # Trả về embedding model
     vectorstore = FAISS.from_documents(chunks, embeddings)
     return vectorstore
 

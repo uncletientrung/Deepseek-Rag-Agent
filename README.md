@@ -52,17 +52,19 @@ views.index                 // Gọi hàm index để render html
     ↓
 index.html                  // Trả về giao diện cho trình duyệt
 
-Upload PDF                  
+Upload PDF                  // User upload -> chạy hàm js lấy được thông tin của file upload 
+                            // Sau đó gửi url upload với thông tin của file upload
+    ↓   
+views.upload_pdf            // Tạo và Lưu pdf dưới dạng nhị phân vào thư mục data sau đó chạy RAG
     ↓
-views.upload_pdf
+pipeline.py                      
     ↓
-pipeline.py
+pdf_loader                  // Load PDF và cắt các chunk -> return thông tin chi tiết pdf có cả content,
+                            // và thông tin chi tiết của các chunk có cả content sau cắt
     ↓
-pdf_loader
+embedding                   // Cấu hình và trả về embedding model
     ↓
-embedding
-    ↓
-faiss
+faiss                       
     ↓
 llm
     ↓

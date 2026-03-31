@@ -9,9 +9,9 @@ def load_and_split_pdf(
 ) -> List[Document]:
     """Load PDF và split thành chunks."""
     loader = PDFPlumberLoader(pdf_path)
-    documents = loader.load()
+    documents = loader.load()   # Load PDF
 
-    text_splitter = RecursiveCharacterTextSplitter(
+    text_splitter = RecursiveCharacterTextSplitter( # Cắt chunk
         chunk_size=chunk_size, chunk_overlap=chunk_overlap
     )
     chunks = text_splitter.split_documents(documents)

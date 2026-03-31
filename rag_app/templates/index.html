@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="vi">
 {% load static %}
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -140,11 +141,10 @@
         });
 
         document.getElementById("pdfUpload").addEventListener("change", async (e) => {
-            const file = e.target.files[0];
+            const file = e.target.files[0]; // Lấy file object đầu tiên trong fileList
             if (!file) return;
 
             toggleInput(false);   // disable trong lúc xử lý
-
             const chatArea = document.getElementById("chatArea");
             chatArea.innerHTML = `
                 <div class="message ai">
@@ -164,16 +164,12 @@
                 const data = await res.json();
 
                 if (data.success) {
-                    
                     currentPdfPath = data.pdf_path || data.file_path;
-                    console.log("PDF PATH:", currentPdfPath);
                     statusBar.style.display = "flex";
                     document.getElementById("pageCount").textContent = data.pages || "0";
                     document.getElementById("chunkCount").textContent = data.chunks || "0";
                     document.getElementById("faissStatus").textContent = "FAISS Ready";
-
                     addMessage("ai", `PDF đã được xử lý thành công!<br><strong>${file.name}</strong>`);
-
                     toggleInput(true);   // Bật lại input sau khi thành công
                 } else {
                     addMessage("ai", "Upload thất bại: " + (data.detail || "Lỗi không xác định"));
