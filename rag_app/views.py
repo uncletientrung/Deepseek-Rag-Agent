@@ -66,8 +66,14 @@ def ask_question(request): # request <WSGIRequest: POST '/ask/'>
         result = rag_chain.invoke({ # Đặt câu hỏi và sinh câu trả lời và source_documents nếu bật
             "query": query
         })
-
+        sources = [] # Nguồn tham khảo
+        for doc in result["source_documents"]:
+            sources.append({
+                "page_content": doc.page_content,
+                "metadata": doc.metadata
+            })
         return JsonResponse({
             "result": result["result"],
-            "pdf_path": current_pdf_path
+            "pdf_path": current_pdf_path,
+            "source_documents": sources
         })

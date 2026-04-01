@@ -24,17 +24,17 @@ Project-LLMs-Rag-Agent/
 │   ├── urls.py
 │   └── apps.py
 │
-├── rag/                 ← GIỮ NGUYÊN
+├── rag/             
 │   ├── pipeline.py
 │   ├── embedding.py
 │   ├── retriever.py
 │   ├── promt.py
 │   └── llm.py
 │
-├── document_processing/ ← GIỮ NGUYÊN
+├── document_processing/ 
 │   └── pdf_loader.py
 │
-├── vector_store/        ← GIỮ NGUYÊN
+├── vector_store/       
 │   └── faiss_store.py
 │
 ├── data/
