@@ -1,0 +1,49 @@
+2026-04-04 00:03:05,815 - rag_logger - INFO - File: resume.pdf
+2026-04-04 00:03:23,828 - rag_logger - INFO - Pages: 1
+2026-04-04 00:03:23,828 - rag_logger - INFO - Chunks: 3
+2026-04-04 00:03:23,828 - rag_logger - INFO - UPLOAD THÀNH CÔNG
+2026-04-04 00:03:45,276 - rag_logger - INFO - User: Gpa của Trung là mấy
+2026-04-04 00:05:15,088 - rag_logger - INFO - Bot: Thông tin chính:
+- Nguyễn Tiến Trung hiện đang theo học tại Sai Gon University.
+- GPA hiện tại của Nguyễn Tiến Trung là 3.29/4.0.
+2026-04-04 00:05:15,088 - rag_logger - INFO - ------------------------------------------------------------
+2026-04-04 00:06:30,156 - rag_logger - INFO - User: Thông tin cơ bản về Trung
+2026-04-04 00:06:43,145 - rag_logger - INFO - Bot: Thông tin cơ bản về Trung:
+
+- Tên: Nguyen Tien Trung
+- Địa chỉ liên lạc: thihachcf@gmail.com
+- Tài khoản GitHub: github.com/uncletientrung
+- Mạng xã hội LinkedIn: linkedin.com/in/nguyentrung
+2026-04-04 00:06:43,145 - rag_logger - INFO - ------------------------------------------------------------
+2026-04-04 00:07:00,156 - rag_logger - INFO - User: Trung là ai
+2026-04-04 00:08:26,478 - rag_logger - INFO - Bot: Nguyễn Thiện Trung hiện đang theo học tại Đại học Sân Công Sai Gon từ năm 2023 đến nay. Với lĩnh vực chuyên ngành là Kỹ Thuật Phần Mềm, anh có GPA hiện tại là 3.29/4.0. 
+
+Trung đã tốt nghiệp trung học Kon Tum vào tháng 6 năm 2023. Anh đang theo đuổi các khóa học như: 
+- Object-Oriented Programming
+- Data Structures & Algorithms
+- Embedded Systems
+- Discrete Math
+- Linear Algebra
+- Calculus
+- Physics
+- Probability & Statistics
+
+Nguyễn Thiện Trung sử dụng nhiều ngôn ngữ lập trình và công cụ sau:
+- C/C++
+- C#
+- Python
+- Java
+- JavaScript
+- HTML/CSS
+- PHP
+
+Anh cũng nắm vững các framework/lập chí như Spring Boot, React, Express, cùng với việc sử dụng các cơ sở dữ liệu MySQL và SQL. 
+
+Trung đã thực hiện nhiều dự án liên quan đến học thuật, trong đó đáng chú ý nhất là Colorful Image Colorization - một dự án áp dụng mạng neuron sâu convolution để tự động màu sắc hóa hình ảnh.
+
+Ngoài ra, Nguyễn Thiện Trung còn có các dự án khác bao gồm:
+- TBlog: Một nền tảng blog sử dụng PHP, HTML/CSS, JavaScript
+- Fish Eat Fish: Một game 2D theo mô-tiết "big fish eats small fish"
+- School Bus Tracking System: Hệ thống giám sát xe buýt trường học sử dụng Node.js, React, Express và MySQL.
+- Tạp chí danh mục hàng hóa của trường học sử dụng C#, MySQL.
+2026-04-04 00:08:26,479 - rag_logger - INFO - ------------------------------------------------------------

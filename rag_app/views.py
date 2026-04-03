@@ -1,6 +1,7 @@
 import os
 import json
 from datetime import datetime
+import logging
 
 from django.shortcuts import render
 from django.http import JsonResponse
@@ -10,8 +11,26 @@ from rag.pipeline import build_rag_pipeline
 
 rag_chain = None
 current_pdf_path = None
-log_file_path = None
+logger = None
 
+def create_logger():
+    log_folder = "Logging"
+    if not os.path.exists(log_folder):
+        os.makedirs(log_folder)
+    log_file_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".txt"
+    log_file_path = os.path.join(log_folder, log_file_name)
+    logger = logging.getLogger("rag_logger") # Tạo 1 logger tên là rag
+    logger.setLevel(logging.INFO)
+    if logger.hasHandlers():    # Kiểm tra đã có handler chưa (handler quyệt định logger ghi vào đâu)
+        logger.handlers.clear()  # xóa handler cũ
+    file_handler = logging.FileHandler(log_file_path, encoding="utf-8")
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    return logger
 
 def index(request): # <WSGIRequest: GET '/'>
     # Request gồm các tham số
@@ -28,14 +47,15 @@ def index(request): # <WSGIRequest: GET '/'>
 def upload_pdf(request): # request <WSGIRequest: POST '/upload/'>
     global rag_chain
     global current_pdf_path
+    global logger
+    
     if request.method == "POST":
+        logger = create_logger()
         file = request.FILES.get("file") # lấy biến file PDF từ FormData từ hàm upload bên frontend.
         try:
-            write_log("\n===== Upload PDF =====")
-            write_log(f"Time: {datetime.now()}")
-            write_log(f"File: {file.name}")
+            logger.info(f"File: {file.name}")
             if file.size > 50 * 1024 * 1024:
-                write_log("Lỗi: Kích thước File lớn hơn 50MB")
+                logger.error("Lỗi File lớn hơn 50MB")
                 return JsonResponse({
                     "success": False,
                     "detail": "Kích thước File phải bé hơn 50MB"
@@ -48,9 +68,9 @@ def upload_pdf(request): # request <WSGIRequest: POST '/upload/'>
             rag_chain = qa_chain # RetrieverQA
             current_pdf_path = path # Đường dẫn pdf
 
-            write_log(f"Pages: {len(documents)}")
-            write_log(f"Chunks: {len(chunks)}")
-            write_log("Upload thành công")
+            logger.info(f"Pages: {len(documents)}")
+            logger.info(f"Chunks: {len(chunks)}")
+            logger.info("UPLOAD THÀNH CÔNG")
 
             return JsonResponse({ 
                 "success": True,
@@ -58,9 +78,8 @@ def upload_pdf(request): # request <WSGIRequest: POST '/upload/'>
                 "chunks": len(chunks),
                 "pdf_path": path  
             })
-        except:
-            write_log(f"Lỗi upload: {str(e)}")
-
+        except Exception as e:
+            logger.error(f"Lỗi upload: {str(e)}")
             return JsonResponse({
                 "success": False,
                 "detail": "Lỗi không thể kết nối LLM"
@@ -72,35 +91,38 @@ def ask_question(request): # request <WSGIRequest: POST '/ask/'>
      # urls gọi hàm này thì hàm này nhận request
     global rag_chain
     global current_pdf_path
+    global logger
     if request.method == "POST":
         if rag_chain is None: # Kiểm tra RetrieverQA
+            if logger:
+                logger.warning("User hỏi nhưng chưa upload PDF")
             return JsonResponse({
                 "result": "Chưa upload PDF"
             })
-        data = json.loads(request.body)
-        query = data.get("query")
-        result = rag_chain.invoke({ # Đặt câu hỏi và sinh câu trả lời và source_documents nếu bật
-            "query": query
-        })
-        sources = [] # Nguồn tham khảo
-        for doc in result["source_documents"]:
-            sources.append({
-                "page_content": doc.page_content,
-                "metadata": doc.metadata
+        
+        try: 
+            data = json.loads(request.body)
+            query = data.get("query")
+            logger.info(f"User: {query}")
+            result = rag_chain.invoke({ # Đặt câu hỏi và sinh câu trả lời và source_documents nếu bật
+                "query": query
             })
-        return JsonResponse({
-            "result": result["result"],
-            "pdf_path": current_pdf_path,
-            "source_documents": sources
-        })
+            logger.info(f"Bot: {result['result']}")
+            logger.info("------------------------------------------------------------")
+            sources = [] # Nguồn tham khảo
+            for doc in result["source_documents"]:
+                sources.append({
+                    "page_content": doc.page_content,
+                    "metadata": doc.metadata
+                })
+            return JsonResponse({
+                "result": result["result"],
+                "pdf_path": current_pdf_path,
+                "source_documents": sources
+            })
+        except Exception as e:
+            logger.error(f"Lỗi khi hỏi: {str(e)}")
+            return JsonResponse({
+                "result": "Có lỗi xảy ra"
+            })
 
-def write_log(content):
-    global log_file_path
-    if log_file_path is None:
-        log_file_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".txt"
-        log_file_path = os.path.join("Logging", log_file_name)
-        with open(log_file_path, "w", encoding="utf-8") as f:
-            f.write(content + "\n")
-    else:
-        with open(log_file_path, "a", encoding="utf-8") as f:
-            f.write(content + "\n")

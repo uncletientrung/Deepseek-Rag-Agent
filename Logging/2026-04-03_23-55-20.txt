@@ -1,0 +1,11 @@
+2026-04-03 23:55:20,257 - rag_logger - INFO - File: resume.pdf
+2026-04-03 23:55:38,639 - rag_logger - INFO - Pages: 1
+2026-04-03 23:55:38,640 - rag_logger - INFO - Chunks: 3
+2026-04-03 23:55:38,640 - rag_logger - INFO - UPLOAD THÀNH CÔNG
+2026-04-03 23:55:46,995 - rag_logger - INFO - User: Trung là ai
+2026-04-03 23:57:59,345 - rag_logger - INFO - Bot: Nguyễn Tiến Trung là một học viên hiện đang theo học tại Sai Gon University với chuyên ngành Công nghệ phần mềm. Ông đã tốt nghiệp cấp trung học tại Kon Tum High School vào tháng Sáu năm 2023. Trong suốt quá trình học tập, Nguyễn Tiến Trung đã hoàn thành các bài giảng về lập trình hướng đối tượng, cấu trúc dữ liệu và algoritma, lý thuyết số học, đại số tuyến tính, đạo hàm, vật lý, thống kê xác suất, và nhiều ngôn ngữ lập trình khác như C/C++, Java, Python, JavaScript, PHP. 
+
+Ông cũng đã tiến hành nghiên cứu về kỹ thuật màu sắc hóa hình ảnh hai chiều dựa trên công thức CNN, sử dụng Jupyter Notebook, Python, GitHub, và Visual Studio Code để hoàn thành project này vào tháng Năm năm 2025.
+
+Ngoài ra, Nguyễn Tiến Trung còn có nhiều dự án khác như một game mô phỏng tựa game "Big Fish Eats Small Fish", hệ thống quản lý xe trường học sử dụng Node.js, React, Express và MySQL, và hệ thống quản lý kho hàng cho cửa hàng quần áo. Ông đã thực hiện các dự án này từ năm 2024 đến 2025 bằng cách sử dụng ngôn ngữ lập trình như C#, Python, JavaScript, PHP, SQL, Node.js, React, và Visual Studio Code.
+2026-04-03 23:57:59,346 - rag_logger - INFO - ------------------------------
