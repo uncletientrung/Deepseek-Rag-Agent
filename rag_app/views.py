@@ -20,7 +20,7 @@ def create_logger():
     log_file_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".txt"
     log_file_path = os.path.join(log_folder, log_file_name)
     logger = logging.getLogger("rag_logger") # Tạo 1 logger tên là rag
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.INFO) # Nếu không set thì nó chỉ ghi từ level warning trở lên mà info < warning
     if logger.hasHandlers():    # Kiểm tra đã có handler chưa (handler quyệt định logger ghi vào đâu)
         logger.handlers.clear()  # xóa handler cũ
     file_handler = logging.FileHandler(log_file_path, encoding="utf-8")

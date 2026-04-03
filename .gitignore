@@ -54,6 +54,7 @@ langchain_cache/
 ollama_cache/
 
 # ======================
-# Thư mục chứa các pdf
+# Thư mục ngoài không push lên
 # ======================
 data/
+Logging/
