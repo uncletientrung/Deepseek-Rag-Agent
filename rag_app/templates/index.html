@@ -45,7 +45,7 @@
                 <h3><i class="fas fa-microchip"></i> Model Configuration</h3>
                 <div class="model-config">
                     <div class="config-item"><span>LLM</span><strong>qwen2.5:3b</strong></div>
-                    <div class="config-item"><span>Embedding</span><strong>multilingual- mpnet</strong></div>
+                    <div class="config-item"><span>Embedding</span><strong>multilingual</strong></div>
                     <div class="config-item"><span>Vector DB</span><strong>FAISS</strong></div>
                     <div class="config-item"><span>Framework</span><strong>LangChain</strong></div>
                 </div>
@@ -58,8 +58,6 @@
         <main class="main-content">
             <header class="header">
                 <h1>Hỏi Đáp Tài Liệu PDF (RAG)</h1>
-                <p class="subtitle">Tải lên tài liệu PDF và trò chuyện với AI để nhận thông tin chính xác, nhanh chóng
-                </p>
             </header>
 
             <!-- Upload Area -->
@@ -67,7 +65,7 @@
                 <div class="upload-box">
                     <i class="fas fa-cloud-upload-alt upload-icon"></i>
                     <h3>Kéo thả hoặc Click để tải PDF</h3>
-                    <p class="upload-desc">Hỗ trợ file PDF • Tối đa 20MB</p>
+                    <p class="upload-desc">Hỗ trợ file PDF • Tối đa 50MB</p>
                     <input type="file" id="pdfUpload" accept=".pdf" style="display:none;">
                     <button class="btn-secondary" id="uploadBtn">
                         <i class="fas fa-folder-open"></i> Chọn tập tin PDF
@@ -112,139 +110,234 @@
         </aside>
     </div>
 
+    <div id="toast" class="toast">
+        <i class="fas fa-exclamation-circle"></i>
+        <span id="toastMessage"></span>
+    </div>
+
     <script>
-        const API_BASE = "";
+        // ==================== KHỞI TẠO BIẾN ====================
         let currentPdfPath = null;
 
         const questionInput = document.getElementById("questionInput");
         const askBtn = document.getElementById("askBtn");
         const statusBar = document.getElementById("statusBar");
+        const chatArea = document.getElementById("chatArea");
+        const uploadBox = document.querySelector('.upload-box');
 
-        // Hàm bật/tắt input và nút Ask + thay đổi placeholder
+        // ==================== HÀM CHUNG ====================
         function toggleInput(enabled) {
             if (enabled) {
                 questionInput.disabled = false;
                 askBtn.disabled = false;
                 questionInput.placeholder = "Nhập câu hỏi của bạn về tài liệu PDF...";
-                askBtn.style.backgroundColor = "#007BFF";   // màu primary
+                askBtn.style.backgroundColor = "#007BFF";
             } else {
                 questionInput.disabled = true;
                 askBtn.disabled = true;
                 questionInput.placeholder = "Vui lòng upload tài liệu PDF trước...";
-                askBtn.style.backgroundColor = "#6c757d";   // màu xám
+                askBtn.style.backgroundColor = "#6c757d";
             }
         }
 
-        // Upload PDF
+        function addMessage(sender, content) {
+            const msgDiv = document.createElement("div");
+            msgDiv.className = `message ${sender}`;
+            msgDiv.innerHTML = `
+                ${sender === "ai" ? `<div class="avatar"><i class="fas fa-robot"></i></div>` : ''}
+                <div class="message-content">${content}</div>
+            `;
+            chatArea.appendChild(msgDiv);
+
+            setTimeout(() => {
+                chatArea.scrollTo({ top: chatArea.scrollHeight, behavior: "smooth" });
+            }, 10);
+
+            return msgDiv;
+        }
+
+        async function streamResponse(aiMessageDiv, fullText) {
+            const contentDiv = aiMessageDiv.querySelector(".message-content");
+            contentDiv.innerHTML = "";
+            let i = 0;
+            const words = fullText.split(" ");
+
+            const interval = setInterval(() => {
+                if (i < words.length) {
+                    contentDiv.innerHTML += words[i] + " ";
+                    i++;
+                    if ((chatArea.scrollHeight - chatArea.scrollTop - chatArea.clientHeight) < 100) {
+                        chatArea.scrollTo({ top: chatArea.scrollHeight, behavior: "auto" });
+                    }
+                } else {
+                    clearInterval(interval);
+                    setTimeout(() => chatArea.scrollTo({ top: chatArea.scrollHeight, behavior: "smooth" }), 50);
+                }
+            }, 25);
+        }
+        // ==================== CUSTOM TOAST ====================
+        function showToast(message, type = "error") {
+            const toast = document.getElementById("toast");
+            const toastMessage = document.getElementById("toastMessage");
+
+            toastMessage.textContent = message;
+
+            // Có thể tùy chỉnh màu theo type sau này
+            if (type === "success") {
+                toast.style.background = "#28a745";
+            } else {
+                toast.style.background = "#dc3545";   // error mặc định
+            }
+
+            toast.classList.add("show");
+
+            // Tự động ẩn sau 3.5 giây
+            setTimeout(() => {
+                toast.classList.remove("show");
+            }, 3500);
+        }
+        // ==================== DRAG & DROP - HIGHLIGHT UPLOAD SECTION ====================
+        const uploadSection = document.querySelector('.upload-section');
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        function highlight() {
+            uploadSection.classList.add('dragover');
+        }
+
+        function unhighlight() {
+            uploadSection.classList.remove('dragover');
+        }
+
+        // ====================== EVENTS ======================
+        uploadSection.addEventListener('dragenter', (e) => {
+            preventDefaults(e);
+            highlight();
+        });
+
+        uploadSection.addEventListener('dragleave', (e) => {
+            preventDefaults(e);
+            if (!uploadSection.contains(e.relatedTarget)) {
+                unhighlight();
+            }
+        });
+
+        uploadSection.addEventListener('dragover', preventDefaults);
+
+        // ====================== DROP EVENT - CUSTOM TOAST =================
+        uploadSection.addEventListener('drop', (e) => {
+            preventDefaults(e);
+            unhighlight();
+
+            const file = e.dataTransfer.files[0];
+
+            if (file && file.type === "application/pdf") {
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                const fileInput = document.getElementById("pdfUpload");
+                fileInput.files = dt.files;
+                fileInput.dispatchEvent(new Event('change'));
+            }
+            else if (file) {
+                showToast("Chỉ hỗ trợ file PDF! Vui lòng chọn file có định dạng .pdf", "error");
+            }
+        });
+        // ==================== UPLOAD PDF ====================
         document.getElementById("uploadBtn").addEventListener("click", () => {
             document.getElementById("pdfUpload").click();
         });
 
         document.getElementById("pdfUpload").addEventListener("change", async (e) => {
-            const file = e.target.files[0]; // Lấy file object đầu tiên trong fileList
+            const file = e.target.files[0];
             if (!file) return;
-            toggleInput(false);   // disable trong lúc xử lý
-            const uploadPDF = addMessage("ai", `Đang upload và xử lý PDF <strong>${file.name}</strong>`);
+
+            toggleInput(false);
+            const loadingMsg = addMessage("ai", `Đang upload và xử lý PDF <strong>${file.name}</strong>`);
 
             try {
                 const formData = new FormData();
                 formData.append("file", file);
 
-                const res = await fetch(`/upload/`, {
-                    method: "POST",
-                    body: formData
-                });
-
+                const res = await fetch(`/upload/`, { method: "POST", body: formData });
                 const data = await res.json();
-                uploadPDF.remove();
+
+                loadingMsg.remove();
+
                 if (data.success) {
                     currentPdfPath = data.pdf_path || data.file_path;
                     statusBar.style.display = "flex";
                     document.getElementById("pageCount").textContent = data.pages || "0";
                     document.getElementById("chunkCount").textContent = data.chunks || "0";
                     document.getElementById("faissStatus").textContent = "FAISS Ready";
-                    addMessage("ai", `PDF đã được xử lý thành công!<br><strong>${file.name}</strong>`);
-                    toggleInput(true);   // Bật lại input sau khi thành công
+
+                    addMessage("ai", `File PDF đã được xử lý thành công!<br><strong>${file.name}</strong>`);
+                    showToast("File PDF đã được xử lý thành công!", "success")
+                    toggleInput(true);
                 } else {
                     addMessage("ai", "Upload thất bại: " + (data.detail || "Lỗi không xác định"));
+                    showToast("Kích thước file không được vượt quá 50MB", "error")
                     toggleInput(false);
                 }
             } catch (err) {
                 console.error(err);
-                addMessage("ai", "Không thể kết nối đến Django server.");
+                loadingMsg.remove();
+                addMessage("ai", "Không thể kết nối đến server.");
+                showToast("Không thể kết nối đến server", "error")
                 toggleInput(false);
             }
         });
 
-        // Gửi câu hỏi
+        // ==================== GỬI CÂU HỎI ====================
         async function askQuestion() {
             const question = questionInput.value.trim();
             if (!question || !currentPdfPath) return;
+
             addMessage("user", question);
             questionInput.value = "";
-            const loadingMsg = addMessage("ai", "Đang suy nghĩ..."); // Lưu vào biến để tí xóa
+
+            const aiMessageDiv = addMessage("ai", "Đang suy nghĩ...");
+
             try {
                 const res = await fetch(`/ask/`, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" }, // Khai báo gửi dữ liệu JSON
-                    body: JSON.stringify({ query: question, pdf_path: currentPdfPath }) // Chuyển obj thành json
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ query: question, pdf_path: currentPdfPath })
                 });
 
                 const data = await res.json();
-                loadingMsg.remove();
+
                 if (data.result) {
-                    addMessage("ai", data.result); // Trả lời
-                    
+                    await streamResponse(aiMessageDiv, data.result);
+
                     if (data.source_documents && data.source_documents.length > 0) {
                         let sources = "<br><strong>Nguồn tham khảo:</strong><ul>";
                         data.source_documents.forEach(doc => {
-                            sources += `<li>${doc.page_content}...g</li>`;
+                            sources += `<li>${doc.page_content.substring(0, 150)}...</li>`;
                         });
                         sources += "</ul>";
                         addMessage("ai", sources);
                     }
                 } else {
-                    addMessage("ai", "Không nhận được câu trả lời.");
+                    aiMessageDiv.querySelector(".message-content").innerHTML = "Không nhận được câu trả lời.";
                 }
             } catch (err) {
-                loadingMsg.remove();
-                addMessage("ai", "Lỗi khi gọi API.");
                 console.error(err);
+                aiMessageDiv.querySelector(".message-content").innerHTML = "Lỗi khi gọi API.";
             }
         }
 
+        // ==================== EVENT LISTENERS ====================
         document.getElementById("askBtn").addEventListener("click", askQuestion);
         document.getElementById("questionInput").addEventListener("keypress", (e) => {
             if (e.key === "Enter") askQuestion();
         });
 
-        // Hàm thêm tin nhắn
-        function addMessage(sender, content) {
-            const chatArea = document.getElementById("chatArea");
-            const msgDiv = document.createElement("div");
-            msgDiv.className = `message ${sender}`;
-
-            msgDiv.innerHTML = `
-        ${sender === "ai" ? `<div class="avatar"><i class="fas fa-robot"></i></div>` : ''}
-        <div class="message-content">${content}</div>
-    `;
-
-            chatArea.appendChild(msgDiv);
-
-            // === SỬA SCROLL TỐT HƠN ===
-            setTimeout(() => {
-                chatArea.scrollTo({
-                    top: chatArea.scrollHeight,
-                    behavior: "smooth"
-                });
-            }, 10);   // giảm delay xuống
-
-            return msgDiv;
-        }
-
-        // Khởi tạo ban đầu
+        // ==================== KHỞI TẠO ====================
         window.addEventListener('load', () => {
-            toggleInput(false);   // Bắt đầu ở trạng thái disabled
+            toggleInput(false);
         });
     </script>
 </body>
