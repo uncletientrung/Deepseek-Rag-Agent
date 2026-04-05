@@ -80,7 +80,7 @@
             <div class="input-section">
                 <div class="input-wrapper">
                     <input type="text" class="chat-input" id="questionInput"
-                        placeholder="Vui lòng upload tài liệu PDF trước...">
+                        placeholder="Vui lòng upload tài liệu PDF/ DOCX trước...">
                     <button class="btn-primary" id="askBtn" disabled>
                         <i class="fas fa-paper-plane"></i> Ask
                     </button>
@@ -231,10 +231,9 @@
         uploadSection.addEventListener('drop', (e) => {
             preventDefaults(e);
             unhighlight();
-
             const file = e.dataTransfer.files[0];
-
-            if (file && file.type === "application/pdf") {
+            const fileName = file.name.toLowerCase();
+            if (file && (fileName.endsWith(".pdf") || fileName.endsWith(".docx"))) {
                 const dt = new DataTransfer();
                 dt.items.add(file);
                 const fileInput = document.getElementById("pdfUpload");
@@ -242,7 +241,7 @@
                 fileInput.dispatchEvent(new Event('change'));
             }
             else if (file) {
-                showToast("Chỉ hỗ trợ file PDF! Vui lòng chọn file có định dạng .pdf", "error");
+                showToast("Chỉ hỗ trợ file PDF, DOCX! Vui lòng chọn file có định dạng .pdf, .docx", "error");
             }
         });
         // ==================== UPLOAD PDF ====================
@@ -278,7 +277,7 @@
                     toggleInput(true);
                 } else {
                     addMessage("ai", "Upload thất bại: " + (data.detail || "Lỗi không xác định"));
-                    showToast("Kích thước file không được vượt quá 50MB", "error")
+                    showToast(data.detail, "error")
                     toggleInput(false);
                 }
             } catch (err) {

@@ -52,6 +52,7 @@ def upload_pdf(request): # request <WSGIRequest: POST '/upload/'>
     if request.method == "POST":
         logger = create_logger()
         file = request.FILES.get("file") # lấy biến file PDF từ FormData từ hàm upload bên frontend.
+        file_format = os.path.splitext(file.name)[1].lower()
         try:
             logger.info(f"File: {file.name}")
             if file.size > 50 * 1024 * 1024:
@@ -60,6 +61,13 @@ def upload_pdf(request): # request <WSGIRequest: POST '/upload/'>
                     "success": False,
                     "detail": "Kích thước File phải bé hơn 50MB"
                 }) 
+            elif file_format not in [".pdf", ".docx"]:
+                logger.error("Lỗi sai định dạng File")
+                return JsonResponse({
+                    "success": False,
+                    "detail": "Chỉ hỗ trợ file PDF, DOCX! Vui lòng chọn file có định dạng .pdf, .docx"
+                }) 
+            
             path = os.path.join("data", file.name)
             with open(path, "wb+") as f: # Tạo pdf mới trên ổ đĩa dưới dạng nhị phân
                 for chunk in file.chunks(): # Ghi từng đoạn nhỏ vào file trong thư mục data dưới dạng binary

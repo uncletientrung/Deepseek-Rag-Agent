@@ -39,4 +39,6 @@ Project-LLMs-Rag-Agent/
 │
 ├── data/
 │
-└── documentation/
+├── documentation/
+│
+└── Logging/

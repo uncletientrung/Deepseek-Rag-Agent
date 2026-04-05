@@ -11,3 +11,4 @@ pandas
 ollama
 sentence-transformers
 django
+docx2txt==0.9
