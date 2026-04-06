@@ -2,16 +2,21 @@ import os
 import json
 from datetime import datetime
 import logging
+import uuid
 
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-
 from rag.pipeline import build_rag_pipeline
 
 rag_chain = None
 current_pdf_path = None
 logger = None
+
+def get_or_create_chat_sessions(request):
+    if 'chat_sessions' not in request.session:
+        request.session['chat_sessions'] = []
+    return request.session['chat_sessions']
 
 def create_logger():
     log_folder = "Logging"
@@ -53,6 +58,7 @@ def upload_pdf(request): # request <WSGIRequest: POST '/upload/'>
         logger = create_logger()
         file = request.FILES.get("file") # lấy biến file PDF từ FormData từ hàm upload bên frontend.
         file_format = os.path.splitext(file.name)[1].lower()
+        request.session['file_name']= file.name
         try:
             logger.info(f"File: {file.name}")
             if file.size > 50 * 1024 * 1024:
@@ -79,6 +85,18 @@ def upload_pdf(request): # request <WSGIRequest: POST '/upload/'>
             logger.info(f"Pages: {len(documents)}")
             logger.info(f"Chunks: {len(chunks)}")
             logger.info("UPLOAD THÀNH CÔNG")
+
+            chat_sessions = get_or_create_chat_sessions(request)
+            chat_id = chat_id = str(uuid.uuid4())
+            chat_sessions.append({
+                "id": chat_id,
+                "file": file.name,
+                "created_at": datetime.now().strftime("%H:%M"),
+                "history": []
+            })
+
+            request.session['current_chat_id'] = chat_id
+            request.session.modified = True
 
             return JsonResponse({ 
                 "success": True,
@@ -117,6 +135,25 @@ def ask_question(request): # request <WSGIRequest: POST '/ask/'>
             })
             logger.info(f"Bot: {result['result']}")
             logger.info("------------------------------------------------------------")
+
+            # Lưu vào session chat
+            chat_sessions = get_or_create_chat_sessions(request)
+            current_chat_id = request.session.get("current_chat_id")
+            for chat in chat_sessions:
+                if chat["id"] == current_chat_id:
+                    chat["history"].append({
+                        "role": "user",
+                        "content": query,
+                        "timestamp": datetime.now().strftime("%H:%M")
+                    })
+
+                    chat["history"].append({
+                        "role": "ai",
+                        "content": result['result'],
+                        "timestamp": datetime.now().strftime("%H:%M")
+                    })
+            request.session.modified = True # Báo session đã thay đổi
+
             sources = [] # Nguồn tham khảo
             for doc in result["source_documents"]:
                 sources.append({
@@ -126,7 +163,9 @@ def ask_question(request): # request <WSGIRequest: POST '/ask/'>
             return JsonResponse({
                 "result": result["result"],
                 "pdf_path": current_pdf_path,
-                "source_documents": sources
+                "source_documents": sources,
+                "chat_sessions": chat_sessions,
+                "current_chat_id": request.session.get("current_chat_id")
             })
         except Exception as e:
             logger.error(f"Lỗi khi hỏi: {str(e)}")
@@ -134,3 +173,12 @@ def ask_question(request): # request <WSGIRequest: POST '/ask/'>
                 "result": "Có lỗi xảy ra"
             })
 
+@csrf_exempt
+def get_chat_history(request):
+    if request.method == "GET":
+        chat_sessions = get_or_create_chat_sessions(request)
+        return JsonResponse({
+            "chat_sessions": chat_sessions,
+            "current_chat_id": request.session.get("current_chat_id")
+        })
+    return JsonResponse({"error": "Lỗi lấy chat history ở Views"}, status=405)

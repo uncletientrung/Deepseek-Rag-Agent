@@ -124,6 +124,7 @@
         const statusBar = document.getElementById("statusBar");
         const chatArea = document.getElementById("chatArea");
         const uploadBox = document.querySelector('.upload-box');
+        let chatHistory = [];
 
         // ==================== HÀM CHUNG ====================
         function toggleInput(enabled) {
@@ -244,6 +245,45 @@
                 showToast("Chỉ hỗ trợ file PDF, DOCX! Vui lòng chọn file có định dạng .pdf, .docx", "error");
             }
         });
+        // ==================== HÀM HIỂN THỊ LỊCH SỬ ====================
+        function renderHistoryItem() {
+            const historyList = document.getElementById("historyList");
+            historyList.innerHTML = "";
+            if (chatHistory.length === 0) {
+                historyList.innerHTML = "Chưa có lịch sử";
+                return;
+            }
+            [...chatHistory].reverse().forEach(chat => { // Copy mảng gốc rồi đảo
+                const item = document.createElement("div");
+                item.className = "history-item";
+                const firstUser = chat.history.find(m => m.role === "user");
+                item.innerHTML = `
+                    <i class="fas fa-comments"></i>
+                    <span>
+                        ${firstUser ? firstUser.content.substring(0, 40) : chat.file}
+                    </span>
+                    <small>${chat.created_at}</small>
+                `;
+
+                item.onclick = () => loadConversation(chat.id);
+                historyList.appendChild(item);
+            });
+        }
+        // Load lại toàn bộ cuộc trò chuyện vào chat area
+        function loadConversation(chatId) {
+            chatArea.innerHTML = "";
+            const chat = chatHistory.find(c => c.id === chatId);
+            if (!chat) return;
+            chat.history.forEach(msg => {
+                const msgDiv = document.createElement("div");
+                msgDiv.className = `message ${msg.role}`;
+                msgDiv.innerHTML = `
+            ${msg.role === "ai" ? `<div class="avatar"><i class="fas fa-robot"></i></div>` : ''}
+            <div class="message-content">${msg.content}</div>
+        `;
+                chatArea.appendChild(msgDiv);
+            });
+        }
         // ==================== UPLOAD PDF ====================
         document.getElementById("uploadBtn").addEventListener("click", () => {
             document.getElementById("pdfUpload").click();
@@ -274,6 +314,7 @@
 
                     addMessage("ai", `File PDF đã được xử lý thành công!<br><strong>${file.name}</strong>`);
                     showToast("File PDF đã được xử lý thành công!", "success")
+                    loadHistory(); // Load lại history
                     toggleInput(true);
                 } else {
                     addMessage("ai", "Upload thất bại: " + (data.detail || "Lỗi không xác định"));
@@ -310,7 +351,10 @@
 
                 if (data.result) {
                     await streamResponse(aiMessageDiv, data.result);
-
+                    if (data.chat_sessions) {
+                        chatHistory = data.chat_sessions;
+                        renderHistoryItem();
+                    }
                     if (data.source_documents && data.source_documents.length > 0) {
                         let sources = "<br><strong>Nguồn tham khảo:</strong><ul>";
                         data.source_documents.forEach(doc => {
@@ -333,10 +377,20 @@
         document.getElementById("questionInput").addEventListener("keypress", (e) => {
             if (e.key === "Enter") askQuestion();
         });
+        // ==================== Load history khi trang load hoặc sau upload thành công ====================
+        async function loadHistory() {
+            const res = await fetch('/history/');
+            const data = await res.json();
+            if (data.chat_sessions) {
+                chatHistory = data.chat_sessions;
+                renderHistoryItem();
+            }
+        }
 
         // ==================== KHỞI TẠO ====================
         window.addEventListener('load', () => {
             toggleInput(false);
+            loadHistory();
         });
     </script>
 </body>
