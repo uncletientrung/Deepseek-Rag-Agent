@@ -55,6 +55,11 @@ def upload_pdf(request): # request <WSGIRequest: POST '/upload/'>
     global logger
     
     if request.method == "POST":
+        chunk_size = int(request.POST.get("chunk_size", 1000))
+        chunk_overlap = int(request.POST.get("chunk_overlap", 200))
+        top_k = int(request.POST.get("top_k", 3))
+        fetch_k = int(request.POST.get("fetch_k", 20))
+        temperature = float(request.POST.get("temperature", 0.7))
         logger = create_logger()
         file = request.FILES.get("file") # lấy biến file PDF từ FormData từ hàm upload bên frontend.
         file_format = os.path.splitext(file.name)[1].lower()
@@ -78,7 +83,7 @@ def upload_pdf(request): # request <WSGIRequest: POST '/upload/'>
             with open(path, "wb+") as f: # Tạo pdf mới trên ổ đĩa dưới dạng nhị phân
                 for chunk in file.chunks(): # Ghi từng đoạn nhỏ vào file trong thư mục data dưới dạng binary
                     f.write(chunk)
-            qa_chain, vectorstore, chunks, documents = build_rag_pipeline(path)
+            qa_chain, vectorstore, chunks, documents = build_rag_pipeline(path, chunk_size,chunk_overlap,top_k,fetch_k,temperature)
             rag_chain = qa_chain # RetrieverQA
             current_pdf_path = path # Đường dẫn pdf
 
@@ -228,40 +233,52 @@ def switch_document(request):
 
     if request.method == "POST":
         logger = create_logger() if logger is None else logger
-        
+        path = request.POST.get("path")
+        print(path)
+        chunk_size = int(request.POST.get("chunk_size", 1000))
+        chunk_overlap = int(request.POST.get("chunk_overlap", 200))
+        top_k = int(request.POST.get("top_k", 3))
+        fetch_k = int(request.POST.get("fetch_k", 20))
+        temperature = float(request.POST.get("temperature", 0.7))
         try:
-            file = request.FILES.get("file")
-            if not file:
-                return JsonResponse({"success": False, "detail": "Không tìm thấy file"}, status=400)
+            if path:
+                file_name = os.path.basename(path)
+                print(file_name)
+            else:
+                file = request.FILES.get("file")
+                if not file:
+                    return JsonResponse({"success": False, "detail": "Không tìm thấy file"}, status=400)
 
-            file_format = os.path.splitext(file.name)[1].lower()
+                file_format = os.path.splitext(file.name)[1].lower()
+                
+                if file.size > 50 * 1024 * 1024:
+                    return JsonResponse({"success": False, "detail": "File phải nhỏ hơn 50MB"})
+                if file_format not in [".pdf", ".docx"]:
+                    return JsonResponse({"success": False, "detail": "Chỉ hỗ trợ PDF và DOCX"})
+
+                path = os.path.join("data", file.name)
+                with open(path, "wb+") as f:
+                    for chunk in file.chunks():
+                        f.write(chunk)
+                file_name = file.name
             
-            if file.size > 50 * 1024 * 1024:
-                return JsonResponse({"success": False, "detail": "File phải nhỏ hơn 50MB"})
-            if file_format not in [".pdf", ".docx"]:
-                return JsonResponse({"success": False, "detail": "Chỉ hỗ trợ PDF và DOCX"})
-
-            path = os.path.join("data", file.name)
-            with open(path, "wb+") as f:
-                for chunk in file.chunks():
-                    f.write(chunk)
-            qa_chain, vectorstore, chunks, documents = build_rag_pipeline(path)
+            qa_chain, vectorstore, chunks, documents = build_rag_pipeline(path, chunk_size,chunk_overlap,top_k,fetch_k,temperature)
             rag_chain = qa_chain
             current_pdf_path = path
 
-            logger.info(f"Đổi tài liệu thành công: {file.name} | Pages: {len(documents)} | Chunks: {len(chunks)}")
+            logger.info(f"Đổi tài liệu thành công: {file_name} | Pages: {len(documents)} | Chunks: {len(chunks)}")
             chat_sessions = get_or_create_chat_sessions(request)
             current_chat_id = request.session.get("current_chat_id")
             for chat in chat_sessions:
                 if chat["id"] == current_chat_id:
-                    chat["file"] = file.name  # Đổi tên file trong session
+                    chat["file"] = file_name  # Đổi tên file trong session
                     break
 
             request.session.modified = True
             return JsonResponse({
                 "success": True,
                 "message": "Đã đổi sang tài liệu mới",
-                "file_name": file.name,
+                "file_name": file_name,
                 "pages": len(documents),
                 "chunks": len(chunks),
                 "pdf_path": path,

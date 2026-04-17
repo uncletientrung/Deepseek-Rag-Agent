@@ -8,15 +8,15 @@ from rag.promt import VIETNAMESE_PROMPT
 import os
 
 
-def build_rag_pipeline(file_path: str):
+def build_rag_pipeline(file_path: str,chunk_size: int = 1000, chunk_overlap: int = 200, top_k: int = 3, fetch_k: int = 20, temperature: float = 0.7):
     file_format = os.path.splitext(file_path)[1].lower()
     if file_format == ".pdf":
-        chunks, documents = load_and_split_pdf(file_path) # Load pdf và cắt chunk
+        chunks, documents = load_and_split_pdf(file_path, chunk_size, chunk_overlap) # Load pdf và cắt chunk
     elif file_format == ".docx":
         chunks, documents = load_and_split_docx(file_path)
     vectorstore = create_faiss_vectorstore(chunks) # Tạo FAISS obj
-    retriever = get_retriever(vectorstore) # Gán FAISS sang retriever
-    llm = get_llm() # Tạo Ollama
+    retriever = get_retriever(vectorstore, top_k, fetch_k) # Gán FAISS sang retriever
+    llm = get_llm(temperature=temperature) # Tạo Ollama
 
     qa_chain = RetrievalQA.from_chain_type( 
         llm=llm,

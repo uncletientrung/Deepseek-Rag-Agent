@@ -32,12 +32,34 @@
             <div class="section">
                 <h3><i class="fas fa-cog"></i> Thông tin cài đặt</h3>
                 <div class="settings">
-                    <div class="setting-item"><span>Chunk Size</span><strong>1000</strong></div>
-                    <div class="setting-item"><span>Chunk Overlap</span><strong>200</strong></div>
-                    <div class="setting-item"><span>Top K</span><strong>3</strong></div>
-                    <div class="setting-item"><span>Fetch K</span><strong>20</strong></div>
-                    <div class="setting-item"><span>Device</span><strong>CPU</strong></div>
-                    <div class="setting-item"><span>Temperature</span><strong>0.7</strong></div>
+                    <div class="setting-item">
+                        <span>Chunk Size</span>
+                        <input type="number" id="chunkSize" value="1000">
+                    </div>
+
+                    <div class="setting-item">
+                        <span>Chunk Overlap</span>
+                        <input type="number" id="chunkOverlap" value="200">
+                    </div>
+
+                    <div class="setting-item">
+                        <span>Top K</span>
+                        <input type="number" id="topK" value="3">
+                    </div>
+
+                    <div class="setting-item">
+                        <span>Fetch K</span>
+                        <input type="number" id="fetchK" value="20">
+                    </div>
+
+                    <div class="setting-item">
+                        <span>Temperature</span>
+                        <input type="number" step="0.1" id="temperature" value="0.7">
+                    </div>
+                </div>
+                <div class="settings-actions">
+                    <button id="editSettingsBtn" class="btn-edit">Chỉnh sửa</button>
+                    <button id="saveSettingsBtn" class="btn-save" style="display:none;">Lưu</button>
                 </div>
             </div>
 
@@ -152,7 +174,15 @@
         const uploadSection = document.querySelector('.upload-section');
         const changeDocumentBtn = document.getElementById('changeDocumentBtn');
         let chatHistory = [];
-        let confirmCallback = null;
+        let chunk_size = document.getElementById("chunkSize")
+        let chunk_overlap = document.getElementById("chunkOverlap")
+        let top_k = document.getElementById("topK")
+        let fetch_k = document.getElementById("fetchK")
+        let temperature = document.getElementById("temperature")
+        const editBtn = document.getElementById("editSettingsBtn");
+        const saveBtn = document.getElementById("saveSettingsBtn");
+        const settingInputs = document.querySelectorAll(".setting-item input"); // Danh sách các setting
+        settingInputs.forEach(i => i.disabled = true);
 
         // ==================== HÀM CHUNG ====================
         function toggleInput(enabled, check_history = false) {
@@ -172,6 +202,25 @@
 
                 askBtn.style.backgroundColor = "#6c757d";
             }
+        }
+        function toggleInputSetting(enabled) {
+            settingInputs.forEach(input => {
+                input.disabled = !enabled;
+            });
+            if(enabled){
+                editBtn.style.display = "none";
+                saveBtn.style.display = "block";
+            }else{
+                editBtn.style.display = "block";
+                saveBtn.style.display = "none";
+            }
+            document.querySelectorAll(".setting-item").forEach(item => {
+                if (enabled) {
+                    item.classList.add("editing");
+                } else {
+                    item.classList.remove("editing");
+                }
+            });
         }
 
         function addMessage(sender, content) {
@@ -371,7 +420,6 @@
                 btn.addEventListener('click', function(e) {
                     e.stopPropagation(); 
                     const chatId = this.getAttribute('data-id');
-                    console.log("CLICK DELETE", chatId);
                     deleteChat(chatId);
                 });
             });
@@ -410,6 +458,7 @@
 
         document.getElementById("pdfUpload").addEventListener("change", async (e) => {
             const file = e.target.files[0];
+            
             if (!file) return;
 
             toggleInput(false);
@@ -418,6 +467,11 @@
             try {
                 const formData = new FormData();
                 formData.append("file", file);
+                formData.append("chunk_size", Number(chunk_size.value));
+                formData.append("chunk_overlap", Number(chunk_overlap.value));
+                formData.append("top_k", Number(top_k.value));
+                formData.append("fetch_k", Number(fetch_k.value));
+                formData.append("temperature", Number(temperature.value));
 
                 const res = await fetch(`/upload/`, { method: "POST", body: formData });
                 const data = await res.json();
@@ -426,12 +480,14 @@
 
                 if (data.success) {
                     activeChatId = data.current_chat_id;
+
                     currentPdfPath = data.pdf_path || data.file_path;
                     statusBar.style.display = "flex";
                     document.getElementById("pageCount").textContent = data.pages || "0";
                     document.getElementById("chunkCount").textContent = data.chunks || "0";
                     document.getElementById("faissStatus").textContent = "FAISS Ready";
 
+                    
                     addMessage("ai", `File PDF đã được xử lý thành công!<br><strong>${file.name}</strong>`);
                     showToast("File PDF đã được xử lý thành công!", "success")
                     uploadSection.style.display = "none";
@@ -566,53 +622,138 @@
         }
 
         // ==================== ĐỔI TÀI LIỆU MỚI====================
-        async function changeDocument() {
-            const input = document.createElement('input');     // Tạo input file tạm để upload
-            input.type = 'file';
-            input.accept = '.pdf,.docx';
-            input.onchange = async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                const loadingMsg = addMessage("ai", `Đang xử lý tài liệu mới: <strong>${file.name}</strong>`);
-                try {
-                    const formData = new FormData();
+       async function changeDocument(choice_file = false) {
+            let file = null;
+            if (choice_file) { // Nếu thay đổi file
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.pdf,.docx';
+                input.onchange = async (e) => {
+                    const selectedFile = e.target.files[0];
+                    console.log(selectedFile);
+                    
+                    if (!selectedFile) return;
+                    
+                    await processChangeDocument(selectedFile);
+                };
+                input.click();
+                return;
+            }
+
+            if (!currentPdfPath) { // Nếu thay đổi chỉ số
+                showToast("Chưa có file để xử lý!", "error");
+                return;
+            }
+            await processChangeDocument(false);
+        }
+
+        async function processChangeDocument(file = false) {
+            let fileName = null;
+            if (!file) {
+                fileName = currentPdfPath.split(/[/\\]/).pop();
+            } else {
+                fileName = file.name;
+            }
+            
+            const loadingMsg = addMessage("ai", `Đang xử lý tài liệu: <strong>${fileName}</strong>`);
+            try {
+                const formData = new FormData();
+                if(!file == false){
                     formData.append("file", file);
-                    const res = await fetch('/switch-document/', {
-                        method: "POST",
-                        body: formData
-                    });
-
-                    const data = await res.json();
-                    loadingMsg.remove();
-                    if (data.success) {
-                        currentPdfPath = data.pdf_path;
-                        statusBar.style.display = "flex";
-                        document.getElementById("pageCount").textContent = data.pages || "0";
-                        document.getElementById("chunkCount").textContent = data.chunks || "0";
-
-                        addMessage("ai", `Đã đổi sang tài liệu mới:<br><strong>${data.file_name}</strong>`);
-                        showToast("Đổi tài liệu thành công!", "success");
-                        await loadHistory();
-                    } else {
-                        addMessage("ai", "" + (data.detail || "Đổi tài liệu thất bại"));
-                        showToast(data.detail, "error");
-                    }
-                } catch (err) {
-                    console.error(err);
-                    loadingMsg.remove();
-                    showToast("Lỗi kết nối server", "error");
+                }else{
+                    formData.append("path", currentPdfPath);
                 }
-            };
+                formData.append("chunk_size", Number(chunk_size.value));
+                formData.append("chunk_overlap", Number(chunk_overlap.value));
+                formData.append("top_k", Number(top_k.value));
+                formData.append("fetch_k", Number(fetch_k.value));
+                formData.append("temperature", Number(temperature.value));
 
-            input.click();
+                const res = await fetch('/switch-document/', {
+                    method: "POST",
+                    body: formData
+                });
+
+                const data = await res.json();
+                loadingMsg.remove();
+
+                if (data.success) {
+                    currentPdfPath = data.pdf_path;
+
+                    statusBar.style.display = "flex";
+                    document.getElementById("pageCount").textContent = data.pages || "0";
+                    document.getElementById("chunkCount").textContent = data.chunks || "0";
+
+                    addMessage("ai", `Đã cập nhật tài liệu:<br><strong>${data.file_name}</strong>`);
+                    showToast("Cập nhật thành công!", "success");
+                    await loadHistory();
+                } else {
+                    showToast(data.detail || "Thất bại", "error");
+                }
+            } catch (err) {
+                console.error(err);
+                loadingMsg.remove();
+                showToast("Lỗi kết nối server", "error");
+            }
         }
         // ==================== EVENT LISTENERS ====================
-        changeDocumentBtn.addEventListener("click", changeDocument);
+        changeDocumentBtn.addEventListener("click", function () {
+            changeDocument(true);
+        });
         document.getElementById("newChatBtn").addEventListener("click", createNewChat);
         document.getElementById("askBtn").addEventListener("click", askQuestion);
         document.getElementById("questionInput").addEventListener("keypress", (e) => {
             if (e.key === "Enter") askQuestion();
         });
+        editBtn.addEventListener("click", () => {
+            toggleInputSetting(true);
+        });
+        saveBtn.addEventListener("click", () => {
+            const chunkSizeVal = Number(chunk_size.value);
+            const chunkOverlapVal = Number(chunk_overlap.value);
+            const topKVal = Number(top_k.value);
+            const fetchKVal = Number(fetch_k.value);
+            const tempVal = Number(temperature.value);
+            if (chunkSizeVal <= 0) {
+                showToast("Chunk Size phải lớn hơn 0!", "error");
+                return;
+            }
+            if (chunkOverlapVal < 0) {
+                showToast("Chunk Overlap không được âm!", "error");
+                return;
+            }
+            if (chunkOverlapVal >= chunkSizeVal) {
+                showToast("Chunk Overlap phải nhỏ hơn Chunk Size!", "error");
+                return;
+            }
+
+            if (topKVal <= 0) {
+                showToast("Top K phải lớn hơn 0!", "error");
+                return;
+            }
+
+            if (fetchKVal <= 0) {
+                showToast("Fetch K phải lớn hơn 0!", "error");
+                return;
+            }
+
+            if (topKVal > fetchKVal) {
+                showToast("Fetch K phải lớn hơn hoặc bằng Top K!", "error");
+                return;
+            }
+
+            if (tempVal < 0 || tempVal > 1) {
+                showToast("Temperature phải nằm trong khoảng 0 đến 1!", "error");
+                return;
+            }
+            toggleInputSetting(false);
+            if (uploadSection.style.display == "none" && askBtn.disabled == false) {
+                changeDocument(false);
+            }
+            showToast("Điều chỉnh thông số cấu hình thành công!", "success");
+        });
+
+
         // ==================== KHỞI TẠO ====================
         window.addEventListener('load', () => {
             toggleInput(false);

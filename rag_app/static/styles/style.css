@@ -591,3 +591,92 @@ body {
 .btn-danger:hover {
     background: #c82333;
 }
+
+/* ==================== SETTINGS INPUT STYLE UPGRADE ==================== */
+
+.setting-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 8px;
+    border-bottom: 1px solid #4A4F55;
+    font-size: 0.95rem;
+    gap: 10px;
+}
+
+/* Label bên trái */
+.setting-item span {
+    color: #e9ecef;
+    font-weight: 500;
+}
+
+/* Input bên phải */
+.setting-item input {
+    width: 90px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid #555;
+    background: #2C2F33;
+    color: white;
+    outline: none;
+    text-align: center;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+}
+
+/* Hover input */
+.setting-item input:hover {
+    border-color: #007BFF;
+}
+
+/* Focus input */
+.setting-item input:focus {
+    border-color: #007BFF;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+/* Remove arrow tăng giảm (optional cho đẹp UI) */
+.setting-item input::-webkit-outer-spin-button,
+.setting-item input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.setting-item input {
+    border: 1px solid transparent;
+    background: transparent;
+    transition: 0.2s;
+    padding: 4px 6px;
+}
+
+.setting-item.editing input {
+    border: 1px solid #007BFF;
+    background: #f0f8ff;
+    border-radius: 4px;
+    box-shadow: 0 0 3px rgba(0, 123, 255, 0.3);
+    color: #212529;
+}
+.settings-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.btn-edit, .btn-save {
+    flex: 1;
+    padding: 10px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.btn-edit {
+    background: #FFC107;
+    color: white;
+}
+
+.btn-save {
+    background: #007BFF; 
+    color: white;
+}
