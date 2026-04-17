@@ -781,3 +781,67 @@ body {
     cursor: pointer;
     color: #aaa;
 }
+/* ==================== TEXT LAYER & HIGHLIGHT ==================== */
+.textLayer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    overflow: hidden;
+    opacity: 1;
+    line-height: 1;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.textLayer span {
+    color: transparent;
+    position: absolute;
+    white-space: pre;
+    transform-origin: 0% 0%;
+    z-index: 1;
+}
+
+/* Highlight mạnh hơn - dùng nhiều !important */
+.textLayer .highlight {
+    background-color: rgba(255, 235, 59, 0.85) !important;
+    border-bottom: 4px solid #ffc107 !important;
+    border-radius: 3px !important;
+    box-shadow: 0 0 8px rgba(255, 193, 7, 0.6) !important;
+    padding: 1px 2px !important;
+    z-index: 10 !important;
+    transition: all 0.2s ease;
+}
+
+/* ==================== PDF MODAL BODY ==================== */
+.pdf-modal-body {
+    padding: 0 !important;
+    overflow: auto !important;
+    background: #f8f9fa;
+    display: block !important;
+    max-height: none !important;
+    flex: 1;
+}
+
+#pdfPageContainer {
+    position: relative;
+    display: block;
+    margin: 0 auto;
+    line-height: 0; /* Xóa khoảng trắng thừa dưới canvas */
+}
+
+#pdfCanvas {
+    display: block;
+}
+
+.textLayer {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    overflow: hidden;
+    opacity: 1;
+    line-height: 1;
+    z-index: 2;
+    pointer-events: none;
+    margin: 0 !important;
+    padding: 0 !important;
+}

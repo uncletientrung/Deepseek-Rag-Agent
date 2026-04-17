@@ -160,15 +160,24 @@ def ask_question(request): # request <WSGIRequest: POST '/ask/'>
                     })
             request.session.modified = True # Báo session đã thay đổi
 
-            sources = [] # Nguồn tham khảo
+            # Trong ask_question, phần sources:
+            sources = []
             for i, doc in enumerate(result["source_documents"], 1):
                 metadata = doc.metadata
+                page = metadata.get("page")
+                if isinstance(page, int):
+                    page = page + 1  # vì nhiều loader bắt đầu từ 0
+
                 sources.append({
                     "id": i,
-                    "page_content": doc.page_content,
-                    "page": metadata.get("page", "N/A") + 1 if isinstance(metadata.get("page"), int) else metadata.get("page", "N/A"),
+                    "page_content": doc.page_content,           # giữ nguyên để modal
+                    "snippet": doc.page_content[:280] + "..." if len(doc.page_content) > 280 else doc.page_content,
+                    "page": page,
+                    "short_highlight": doc.page_content[:180].replace('\n', ' ').strip(),
                     "source": os.path.basename(metadata.get("source", current_pdf_path)),
                     "chunk_index": metadata.get("chunk_index", "N/A"),
+                    # Thêm để highlight sau này
+                    "full_text_for_highlight": doc.page_content.strip()
                 })
             return JsonResponse({
                 "result": result["result"],
