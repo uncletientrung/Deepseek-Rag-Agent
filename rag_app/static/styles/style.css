@@ -398,6 +398,38 @@ body {
 .history-item:hover .delete-chat-btn {
     opacity: 1;
 }
+/* History Header */
+.history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.history-header h3 {
+    margin: 0;
+    color: #ffffff;
+}
+
+.new-chat-btn {
+    background: #007BFF;
+    color: white;
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1.2rem;
+    transition: all 0.2s;
+}
+
+.new-chat-btn:hover {
+    background: #0056b3;
+    transform: scale(1.1);
+}
 
 /* ======================== Xóa history ============================ */
 .delete-chat-btn {

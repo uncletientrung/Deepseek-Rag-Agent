@@ -108,7 +108,12 @@
 
         <!-- Sidebar Phải -->
         <aside class="sidebar-right">
-            <h3>Lịch sử trò chuyện</h3>
+            <div class="history-header">
+                <h3>Lịch sử trò chuyện</h3>
+                <button id="newChatBtn" class="new-chat-btn" title="Tạo chat mới">
+                    <i class="fas fa-plus"></i>
+                </button>
+            </div>
             <div class="history-list" id="historyList"></div>
         </aside>
     </div>
@@ -315,9 +320,8 @@
                 showToast("Chỉ hỗ trợ file PDF, DOCX! Vui lòng chọn file có định dạng .pdf, .docx", "error");
             }
         });
-        // ==================== HÀM HIỂN THỊ LỊCH SỬ ====================
 
-        // ==================== RENDER HISTORY (ĐƠN GIẢN) ====================
+        // ==================== HÀM HIỂN THỊ LỊCH SỬ ====================
         function renderHistory() {
             const historyList = document.getElementById("historyList");
             historyList.innerHTML = "";
@@ -506,6 +510,20 @@
                 renderHistory();
             }
         }
+        // ==================== TẠO CHAT MỚI HOÀN TOÀN ====================
+        async function createNewChat(showToast = true) {
+            chatArea.innerHTML = ""; // reload lại từ đầu
+            currentPdfPath = null;
+            currentChatId = null;
+            activeChatId = null;
+            statusBar.style.display = "none"; // Ẩn thanh đã đọc đc mấy chunks
+            uploadSection.style.display = "block";
+            questionInput.value = "";
+            toggleInput(false, false);
+            renderHistory();
+            if(showToast)
+                showToast("Đã tạo chat mới. Vui lòng upload tài liệu!", "success");
+        }
 
         // ==================== XÓA MỘT CUỘC TRÒ CHUYỆN ====================
         async function deleteChat(chatId) {
@@ -537,6 +555,7 @@
 
                     renderHistory();
                     showToast("Đã xóa cuộc trò chuyện", "success");
+                    createNewChat(false)
                 } else {
                     showToast(data.message || "Xóa thất bại", "error");
                 }
@@ -589,6 +608,7 @@
         }
         // ==================== EVENT LISTENERS ====================
         changeDocumentBtn.addEventListener("click", changeDocument);
+        document.getElementById("newChatBtn").addEventListener("click", createNewChat);
         document.getElementById("askBtn").addEventListener("click", askQuestion);
         document.getElementById("questionInput").addEventListener("keypress", (e) => {
             if (e.key === "Enter") askQuestion();
