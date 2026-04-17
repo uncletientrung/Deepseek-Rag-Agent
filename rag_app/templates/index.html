@@ -140,6 +140,23 @@
         </aside>
     </div>
 
+    <!-- Source Panel - Trượt lên/xuống -->
+    <div id="sourcePanel" class="source-panel">
+        <div class="source-panel-toggle" id="sourcePanelToggle">
+            <div class="source-panel-toggle-left">
+                <i class="fas fa-link"></i>
+                <span id="sourcePanelTitle">Nguồn tham khảo</span>
+            </div>
+            <div class="source-panel-toggle-right">
+                <span id="sourcePanelCount" class="source-count-badge">0</span>
+                <i class="fas fa-chevron-up" id="sourcePanelIcon"></i>
+            </div>
+        </div>
+        <div class="source-panel-body" id="sourcePanelBody">
+            <div class="source-panel-list" id="sourcePanelList"></div>
+        </div>
+    </div>
+
     <div id="toast" class="toast">
         <i class="fas fa-exclamation-circle"></i>
         <span id="toastMessage"></span>
@@ -222,6 +239,9 @@
         let pdfDoc = null;
         const canvas = document.getElementById('pdfCanvas');
         const ctx = canvas.getContext('2d');
+
+        const sourcePanel = document.getElementById('sourcePanel');
+        const sourcePanelToggle = document.getElementById('sourcePanelToggle');
 
         // ==================== HÀM CHUNG ====================
         function toggleInput(enabled, check_history = false) {
@@ -585,71 +605,7 @@
                     }
                     // ==================== HIỂN THỊ SOURCES + HIGHLIGHT ====================
                     if (data.source_documents && data.source_documents.length > 0) {
-                        let sourcesHTML = `
-                            <br>
-                            <strong><i class="fas fa-link"></i> Nguồn tham khảo (${data.source_documents.length})</strong>
-                            <div class="sources-container">
-                        `;
-
-                        data.source_documents.forEach((doc) => {
-                            const shortSnippet = doc.snippet || doc.page_content.substring(0, 180).replace(/\n/g, ' ') + '...';
-
-                            sourcesHTML += `
-                                <div class="source-item">
-                                    <div class="source-header">
-                                        <span class="source-badge">Nguồn ${doc.id}</span>
-                                        <span class="source-page">Trang <strong>${doc.page}</strong></span>
-                                    </div>
-                                    <div class="source-snippet">${shortSnippet}</div>
-                                    <small class="source-file">${doc.source}</small>
-                                    
-                                    <div class="source-actions" style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
-                                        <button class="btn-view-context btn-small" 
-                                                data-full-text="${encodeURIComponent(doc.page_content)}"
-                                                data-page="${doc.page}">
-                                            <i class="fas fa-eye"></i> Xem nội dung gốc
-                                        </button>
-                                        <button class="btn-highlight-pdf btn-small" 
-                                                data-pdf-path="${data.pdf_path || currentPdfPath}"
-                                                data-page="${doc.page}"
-                                                data-highlight-text="${encodeURIComponent(doc.full_text_for_highlight || doc.page_content)}">
-                                            <i class="fas fa-highlighter"></i> Highlight trong PDF
-                                        </button>
-                                    </div>
-                                </div>
-                            `;
-                        });
-
-                        sourcesHTML += `</div>`;
-
-                        const sourceMsg = addMessage("ai", sourcesHTML);
-
-                        setTimeout(() => {
-                            // Xem nội dung gốc (modal cũ)
-                            sourceMsg.querySelectorAll('.btn-view-context').forEach(btn => {
-                                btn.addEventListener('click', () => {
-                                    const fullText = decodeURIComponent(btn.dataset.fullText);
-                                    showSourceModal(fullText, `Trang ${btn.dataset.page}`);
-                                });
-                            });
-
-                            // Highlight PDF
-                            sourceMsg.querySelectorAll('.btn-highlight-pdf').forEach(btn => {
-                                btn.addEventListener('click', async () => {
-                                    let pdfPath = btn.dataset.pdfPath || currentPdfPath;
-                                    
-                                    // Đảm bảo pdfPath là đường dẫn tương đối bắt đầu bằng data/
-                                    if (pdfPath && !pdfPath.startsWith('data/')) {
-                                        pdfPath = 'data/' + pdfPath.split(/[/\\]/).pop();
-                                    }
-
-                                    const pageNum = parseInt(btn.dataset.page);
-                                    const highlightText = decodeURIComponent(btn.dataset.highlightText);
-                                    
-                                    await openPdfWithHighlight(pdfPath, pageNum, highlightText);
-                                });
-                            });
-                        }, 120);
+                        showSourcePanel(data.source_documents, data.pdf_path || currentPdfPath);
                     }
                 } else {
                     aiMessageDiv.querySelector(".message-content").innerHTML = "Không nhận được câu trả lời.";
@@ -658,6 +614,63 @@
                 console.error(err);
                 aiMessageDiv.querySelector(".message-content").innerHTML = "Lỗi khi gọi API.";
             }
+        }
+
+        // ==================== SOURCE PANEL ====================
+
+
+        sourcePanelToggle.addEventListener('click', () => {
+            sourcePanel.classList.toggle('open');
+        });
+
+        function showSourcePanel(sources, pdfPath) {
+            const list = document.getElementById('sourcePanelList');
+            const badge = document.getElementById('sourcePanelCount');
+            const title = document.getElementById('sourcePanelTitle');
+
+            badge.textContent = sources.length;
+            title.textContent = `Nguồn tham khảo (${sources.length})`;
+            list.innerHTML = '';
+
+            sources.forEach((doc) => {
+                const snippet = doc.snippet || doc.page_content.substring(0, 200).replace(/\n/g, ' ');
+
+                const item = document.createElement('div');
+                item.className = 'source-panel-item';
+                item.innerHTML = `
+                    <div class="source-panel-item-header">
+                        <span class="source-badge">Nguồn ${doc.id}</span>
+                        <span class="source-page">Trang <strong>${doc.page}</strong></span>
+                    </div>
+                    <div class="source-panel-item-snippet">${snippet}</div>
+                    <small class="source-panel-item-file">${doc.source}</small>
+                    <div class="source-panel-item-actions">
+                        <button class="btn-small btn-view">
+                            <i class="fas fa-eye"></i> Xem nội dung gốc
+                        </button>
+                        <button class="btn-small btn-hl">
+                            <i class="fas fa-highlighter"></i> Highlight trong PDF
+                        </button>
+                    </div>
+                `;
+
+                item.querySelector('.btn-view').addEventListener('click', () => {
+                    showSourceModal(doc.page_content, `Trang ${doc.page}`);
+                });
+
+                item.querySelector('.btn-hl').addEventListener('click', async () => {
+                    let path = pdfPath || currentPdfPath;
+                    if (path && !path.startsWith('data/')) {
+                        path = 'data/' + path.split(/[/\\]/).pop();
+                    }
+                    await openPdfWithHighlight(path, parseInt(doc.page), doc.full_text_for_highlight || doc.page_content);
+                });
+
+                list.appendChild(item);
+            });
+
+            // Tự động mở panel
+            sourcePanel.classList.add('open');
         }
 
 
@@ -805,125 +818,118 @@
             }
         }
         
-// ==================== PDF.js HIGHLIGHT VIEWER (PHIÊN BẢN TỐI ƯU) ====================
-let pdfDocGlobal = null;
-const pdfCanvas = document.getElementById('pdfCanvas');
-const pdfCtx = pdfCanvas.getContext('2d');
-const textLayerDiv = document.getElementById('textLayer');
+        // ==================== PDF.js HIGHLIGHT VIEWER (PHIÊN BẢN TỐI ƯU) ====================
+        let pdfDocGlobal = null;
+        const pdfCanvas = document.getElementById('pdfCanvas');
+        const pdfCtx = pdfCanvas.getContext('2d');
+        const textLayerDiv = document.getElementById('textLayer');
 
-async function openPdfWithHighlight(pdfRelativePath, targetPage, highlightText) {
-    const modal = document.getElementById("pdfViewerModal");
-    modal.style.display = "flex";
+        async function openPdfWithHighlight(pdfRelativePath, targetPage, highlightText) {
+            const modal = document.getElementById("pdfViewerModal");
+            modal.style.display = "flex";
 
-    try {
-        let pdfUrl = pdfRelativePath.startsWith('http') 
-            ? pdfRelativePath 
-            : `${window.location.origin}/${pdfRelativePath.replace(/^\//, '')}`;
+            try {
+                let pdfUrl = pdfRelativePath.startsWith('http') 
+                    ? pdfRelativePath 
+                    : `${window.location.origin}/${pdfRelativePath.replace(/^\//, '')}`;
 
-        console.log("Đang load PDF từ URL:", pdfUrl);
+                console.log("Đang load PDF từ URL:", pdfUrl);
 
-        pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+                pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
-        const loadingTask = pdfjsLib.getDocument(pdfUrl);
-        pdfDocGlobal = await loadingTask.promise;
+                const loadingTask = pdfjsLib.getDocument(pdfUrl);
+                pdfDocGlobal = await loadingTask.promise;
 
-        await renderPdfPage(targetPage, highlightText);
-        document.getElementById("pdfCurrentPage").textContent = targetPage;
+                await renderPdfPage(targetPage, highlightText);
+                document.getElementById("pdfCurrentPage").textContent = targetPage;
 
-    } catch (err) {
-        console.error("PDF.js Error:", err);
-        showToast("Lỗi khi mở PDF", "error");
-    }
-}
+            } catch (err) {
+                console.error("PDF.js Error:", err);
+                showToast("Lỗi khi mở PDF", "error");
+            }
+        }
 
-async function renderPdfPage(pageNum, highlightText) {
-    if (!pdfDocGlobal) return;
+        async function renderPdfPage(pageNum, highlightText) {
+            if (!pdfDocGlobal) return;
 
-    const page = await pdfDocGlobal.getPage(pageNum);
-    const scale = 1.8;
-    const viewport = page.getViewport({ scale: scale });
+            const page = await pdfDocGlobal.getPage(pageNum);
+            const scale = 1.8;
+            const viewport = page.getViewport({ scale: scale });
 
-    // Set canvas
-    pdfCanvas.height = viewport.height;
-    pdfCanvas.width = viewport.width;
+            // Set canvas
+            pdfCanvas.height = viewport.height;
+            pdfCanvas.width = viewport.width;
 
-    // Set container khớp đúng canvas, không thừa pixel nào
-    const container = document.getElementById('pdfPageContainer');
-    container.style.width = viewport.width + 'px';
-    container.style.height = viewport.height + 'px';
+            // Set container khớp đúng canvas, không thừa pixel nào
+            const container = document.getElementById('pdfPageContainer');
+            container.style.width = viewport.width + 'px';
+            container.style.height = viewport.height + 'px';
 
-    await page.render({ canvasContext: pdfCtx, viewport: viewport }).promise;
+            await page.render({ canvasContext: pdfCtx, viewport: viewport }).promise;
 
-    // Reset textLayer hoàn toàn
-    textLayerDiv.innerHTML = '';
-    textLayerDiv.style.cssText = `
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: ${viewport.width}px;
-        height: ${viewport.height}px;
-        margin: 0;
-        padding: 0;
-        --scale-factor: ${scale};
-    `;
+            // Reset textLayer hoàn toàn
+            textLayerDiv.innerHTML = '';
+            textLayerDiv.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: ${viewport.width}px;
+                height: ${viewport.height}px;
+                margin: 0;
+                padding: 0;
+                --scale-factor: ${scale};
+            `;
 
-    const textContent = await page.getTextContent();
+            const textContent = await page.getTextContent();
 
-    const textLayer = pdfjsLib.renderTextLayer({
-        textContentSource: textContent,
-        container: textLayerDiv,
-        viewport: viewport,
-        enhanceTextSelection: false
-    });
+            const textLayer = pdfjsLib.renderTextLayer({
+                textContentSource: textContent,
+                container: textLayerDiv,
+                viewport: viewport,
+                enhanceTextSelection: false
+            });
 
-    await textLayer.promise;
+            await textLayer.promise;
 
-    if (highlightText && highlightText.length > 15) {
-        setTimeout(() => preciseHighlight(highlightText), 200);
-    }
-}
+            if (highlightText && highlightText.length > 15) {
+                setTimeout(() => preciseHighlight(highlightText), 200);
+            }
+        }
 
-function preciseHighlight(originalText) {
-    const spans = textLayerDiv.querySelectorAll('span');
-    if (spans.length === 0) {
-        showToast("Không có text layer", "error");
-        return;
-    }
-
-    const cleanText = originalText.replace(/\s+/g, ' ').trim().toLowerCase();
-    let highlightedCount = 0;
-
-    spans.forEach((span, index) => {
-        const spanText = span.textContent.replace(/\s+/g, ' ').trim().toLowerCase();
-
-        if (spanText.length > 5 && cleanText.includes(spanText) || spanText.includes(cleanText.substring(0, 30))) {
-            span.classList.add('highlight');
-            highlightedCount++;
-
-            if (highlightedCount === 1) {
-                span.scrollIntoView({ behavior: "smooth", block: "center" });
+        function preciseHighlight(originalText) {
+            const spans = textLayerDiv.querySelectorAll('span');
+            if (spans.length === 0) {
+                showToast("Không có text layer", "error");
+                return;
             }
 
-            console.log(`✓ Highlighted span #${index}:`, spanText.substring(0, 60));
-        }
-    });
+            const cleanText = originalText.replace(/\s+/g, ' ').trim().toLowerCase();
+            let highlightedCount = 0;
 
-    if (highlightedCount > 0) {
-        showToast(`Đã highlight ${highlightedCount} đoạn`, "success");
-    } else {
-        showToast("PDF đã mở nhưng không tìm thấy đoạn khớp", "error");
-        console.log("Text nguồn không match:", cleanText.substring(0, 100));
-    }
-}
+            spans.forEach((span, index) => {
+                const spanText = span.textContent.replace(/\s+/g, ' ').trim().toLowerCase();
 
-        // Đóng modal PDF
-        document.querySelectorAll('.modal-close').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const modal = document.getElementById("pdfViewerModal");
-                if (modal) modal.style.display = "none";
-                // clear canvas nếu cần
+                if (spanText.length > 5 && cleanText.includes(spanText) || spanText.includes(cleanText.substring(0, 30))) {
+                    span.classList.add('highlight');
+                    highlightedCount++;
+
+                    if (highlightedCount === 1) {
+                        span.scrollIntoView({ behavior: "smooth", block: "center" });
+                    }
+
+                    console.log(`✓ Highlighted span #${index}:`, spanText.substring(0, 60));
+                }
             });
-        });
+
+            if (highlightedCount > 0) {
+                showToast(`Đã highlight ${highlightedCount} đoạn`, "success");
+            } else {
+                showToast("PDF đã mở nhưng không tìm thấy đoạn khớp", "error");
+                console.log("Text nguồn không match:", cleanText.substring(0, 100));
+            }
+        }
+
+
         
         // ==================== EVENT LISTENERS ====================
         changeDocumentBtn.addEventListener("click", function () {
@@ -989,7 +995,14 @@ function preciseHighlight(originalText) {
                 document.getElementById("sourceModal").style.display = "none";
             });
         });
-
+                // Đóng modal PDF
+        document.querySelectorAll('.modal-close').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const modal = document.getElementById("pdfViewerModal");
+                if (modal) modal.style.display = "none";
+                // clear canvas nếu cần
+            });
+        });
         document.getElementById("sourceModal").addEventListener('click', function(e) {
             if (e.target === this) this.style.display = "none";
         });
