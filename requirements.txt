@@ -12,3 +12,4 @@ ollama
 sentence-transformers
 django
 docx2txt==0.9
+rank_bm25

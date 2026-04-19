@@ -1,0 +1,40 @@
+8.2.7 Câu hỏi 7: Thêm hybrid search
+Yêu cầu:
+• Kết hợp semantic search (vector) với keyword search (BM25)
+• Implement ensemble retriever
+• So sánh performance với pure vector search
+
+Hybrid Search = Keyword Search (BM25) + Vector Search (Embedding) (similarity)
+
+- Keyword Search (Tìm theo từ khóa giống hệt)
+    Ưu điểm là chính xác khi từ khóa rõ ràng, nhược điểm là không hiểu nghĩa
+    -- Cách hoạt động:
+        + Lẫy từng chunk của pdf tài liệu được import vào sau đó đó tách từng chunk thành từng chữ  Vd: [['ai', 'là', 'lĩnh', 'vực', 'nghiên', 'cứu', 'máy', 'thông', 'minh'], ['machine', 'learning', 'là', 'một', 'phần', 'của', 'ai']]
+        + Tạo model = BM25Okapi(nhét dictionnary tách vào) 
+        + Sau khi question được thêm vào cùng phải tách question thành từng từ
+        + Lấy model bm25 vừa tạo dùng hàm .get_scores(nhét dictionary question vào) 
+            => Kết quả là danh sách điểm dựa trên so sánh từng đối tượng trong dictionary tài liệu. Điểm càng cao thì càng sát câu hỏi
+    -- Cách tính Điểm
+        + Từ khóa đó có xuất hiện không? => Nếu có tăng Điểm
+        + Từ khóa đó xuất hiện bao nhiêu lần => Càng nhiều lần thì điểm càng cao
+        + nếu như doc (chunk) đó dài bị giảm điểm, nếu nó ngắn thì điểm cao
+        + score = tần suất từ khóa × trọng số * length penalty
+- Vector Search (Semantic Search = dùng Embedding + Similarity + Ranking) (Tìm kiếm dựa trên thông số vector)
+    Ưu điểm là hiểu ngữ nghĩa, nhưng có thể miss keyword
+
+
+- combine_Search = EnsembleRetriever( // Yêu cầu 2: Implement ensemble retriever
+        retrievers=[bm25_retriever, vector_retriever], // Sau khi đã tính điểm cho bm25 và chuẩn hóa các FAISS về 1
+        weights=[bm25_weight, vector_weight] // Mức độ ưu tiên của 2 bên
+    )
+    // Ví dụ bm25_weight = 0.3, vector_weight= 0.7
+    // bm25_retriever có top K là A: 10, B: 5, C: 0
+    // vector_retriever có top K là A: 0.9, B: 0.2, D: 0.6
+        // => CÔNG THỨC: final_score = w1 * bm25_score(doc) + w2 * faiss_score(doc)
+        // Chunk A = 0.3 * 10 + 0.7 * 0.9 = 3 + 0.63 = 3.63
+        // Chunk B = 0.3 * 5 + 0.7 * 0.2 = 1.5 + 0.14 = 1.64
+        // Chunk C = 0.3 * 0 + 0.7 * 0 = 0
+        // Chunk D = 0.3 * 0 + 0.7 * 0.6 = 0/42
+        ==> Kết quả A > B > D > C
+
+CÁI NÀY CHỈ THAY ĐỔI RETRIEVER
