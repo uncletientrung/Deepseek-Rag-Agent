@@ -1,2 +1,6 @@
-metadata: là thông tin của 1 chunk đó 
+metadata: là thông tin của 1 chun
+k đó 
     metadata={'source': 'data\\resume.pdf', 'file_path': 'data\\resume.pdf', 'page': 0, 'total_pages': 1, 'Author': '', 'CreationDate': 'D:20260311120154Z', 'Creator': 'LaTeX with hyperref', 'Keywords': '', 'ModDate': 'D:20260311120154Z', 'PTEX.Fullbanner': 'This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) kpathsea version 6.4.1', 'Producer': 'pdfTeX-1.40.27', 'Subject': '', 'Title': '', 'Trapped': 'False'} -------- METADATAAAAA {'source': 'data\\resume.pdf', 'file_path': 'data\\resume.pdf', 'page': 0, 'total_pages': 1, 'Author': '', 'CreationDate': 'D:20260311120154Z', 'Creator': 'LaTeX with hyperref', 'Keywords': '', 'ModDate': 'D:20260311120154Z', 'PTEX.Fullbanner': 'This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) kpathsea version 6.4.1', 'Producer': 'pdfTeX-1.40.27', 'Subject': '', 'Title': '', 'Trapped': 'False'}
+
+documents bên trong pdf_loader là cái chứa metadata và pagecontent lúc này chưa cắt thành các chunk
+chunks trong pdf_loader là mảng chứa các đối tượng Document( bên trong có metadata và pagecontent) của từng chunk

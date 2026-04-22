@@ -103,6 +103,22 @@
 
             <!-- Input + Status -->
             <div class="input-section">
+                <div class="filter-bar" id="filterBar" style="display:none; margin-bottom: 8px; align-items: center; gap: 8px;">
+                    <label style="font-size: 13px; color: #555; white-space: nowrap;">
+                        <i class="fas fa-filter"></i> Lọc theo file:
+                    </label>
+                    <select id="fileFilterSelect" style="
+                        flex: 1;
+                        padding: 6px 10px;
+                        border: 1px solid #ccc;
+                        border-radius: 6px;
+                        font-size: 13px;
+                        background: #fff;
+                        cursor: pointer;
+                    ">
+                        <option value="">-- Tất cả tài liệu --</option>
+                    </select>
+                </div>
                 <div class="input-wrapper">
                     <input type="text" class="chat-input" id="questionInput"
                         placeholder="Vui lòng upload tài liệu PDF/ DOCX trước...">
@@ -525,16 +541,20 @@
         });
 
         document.getElementById("pdfUpload").addEventListener("change", async (e) => {
-            const file = e.target.files[0];
-            
-            if (!file) return;
+            const files = e.target.files;
+            if (!files || files.length === 0) return;
 
             toggleInput(false);
-            const loadingMsg = addMessage("ai", `Đang upload và xử lý PDF <strong>${file.name}</strong>`);
-
+            const loadingMsg = addMessage( "ai",
+                files.length === 1 ? `Đang upload và xử lý file <strong>${files[0].name}</strong>`
+                    : `Đang upload và xử lý <strong>${files.length} file</strong>`
+            );
+            
             try {
                 const formData = new FormData();
-                formData.append("file", file);
+                for (let file of files) {
+                    formData.append("files", file);
+                }
                 formData.append("chunk_size", Number(chunk_size.value));
                 formData.append("chunk_overlap", Number(chunk_overlap.value));
                 formData.append("top_k", Number(top_k.value));
@@ -548,15 +568,16 @@
 
                 if (data.success) {
                     activeChatId = data.current_chat_id;
-
-                    currentPdfPath = data.pdf_path || data.file_path;
+                    currentPdfPath = data.pdf_path;
                     statusBar.style.display = "flex";
+                    updateFileFilter(data.uploaded_files);
                     document.getElementById("pageCount").textContent = data.pages || "0";
                     document.getElementById("chunkCount").textContent = data.chunks || "0";
                     document.getElementById("faissStatus").textContent = "FAISS Ready";
 
-                    
-                    addMessage("ai", `File PDF đã được xử lý thành công!<br><strong>${file.name}</strong>`);
+                    addMessage("ai",
+                        files.length === 1 ? `File đã được xử lý thành công:<br><strong>${files[0].name}</strong>`
+                                            : `<strong> ${files.length} File </strong> đã được xử lý thành công`);
                     showToast("File PDF đã được xử lý thành công!", "success")
                     uploadSection.style.display = "none";
                     changeDocumentBtn.style.display = "flex";
@@ -581,6 +602,8 @@
             const question = questionInput.value.trim();
             if (!question || !currentPdfPath) return;
 
+            const fileFilter = document.getElementById("fileFilterSelect").value || null;
+
             addMessage("user", question);
             questionInput.value = "";
 
@@ -590,7 +613,7 @@
                 const res = await fetch(`/ask/`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ query: question})
+                    body: JSON.stringify({ query: question, file_name: fileFilter})
                 });
 
                 const data = await res.json();
@@ -615,7 +638,6 @@
         }
 
         // ==================== SOURCE PANEL ====================
-
         function showSourcePanel(sources, pdfPath) {
             const list = document.getElementById('sourcePanelList'); // Danh sách src
             const badge = document.getElementById('sourcePanelCount');
@@ -633,7 +655,7 @@
                 item.innerHTML = `
                     <div class="source-panel-item-header">
                         <span class="source-badge">Nguồn ${doc.id}</span>
-                        <span class="source-page">Trang <strong>${doc.page}</strong></span>
+                        <span class="source-page">Trang <strong>${doc.page ?? 'N/A'}</strong></span>
                     </div>
                     <div class="source-panel-item-snippet">${snippet}</div>
                     <small class="source-panel-item-file">${doc.source}</small>
@@ -652,7 +674,7 @@
                 });
 
                 item.querySelector('.btn-hl').addEventListener('click', async () => {
-                    let path = pdfPath || currentPdfPath;
+                    let path = doc.source_path || pdfPath || currentPdfPath;
                     if (path && !path.startsWith('data/')) {
                         path = 'data/' + path.split(/[/\\]/).pop();
                     }
@@ -661,6 +683,25 @@
 
                 list.appendChild(item);
             });
+        }
+        // ==================== Cập nhật filter dropdown ====================
+        function updateFileFilter(fileNames) {
+            const select = document.getElementById("fileFilterSelect");
+            const bar = document.getElementById("filterBar");
+        
+            // Reset
+            select.innerHTML = '<option value="">-- Tất cả tài liệu --</option>';
+            if (!fileNames || fileNames.length === 0) {
+                bar.style.display = "none";
+                return;
+            }
+            fileNames.forEach(name => {
+                const opt = document.createElement("option");
+                opt.value = name;
+                opt.textContent = name;
+                select.appendChild(opt);
+            });
+            bar.style.display = fileNames.length > 1 ? "flex" : "none";
         }
 
         // ==================== Load history khi trang load hoặc sau upload thành công ====================

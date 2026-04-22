@@ -10,7 +10,6 @@ def create_faiss_vectorstore(chunks: List[Document]):
     vectorstore = FAISS.from_documents(chunks, embeddings) # Chuyển hóa chunk thành vector db
     return vectorstore # Trả về FAISS obj chứa index (tất cả vector) và document mapping vector (cái để cái text gốc hay là page_content)
 
-
 def save_faiss_vectorstore(vectorstore: FAISS, path: str = "vector_store/index"): # Lưu FAISS vào ổ đĩa chưa dùng
     vectorstore.save_local(path)
 

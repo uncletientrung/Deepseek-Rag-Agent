@@ -10,17 +10,28 @@ from rag.hybrid_retriever import create_hybrid_retriever
 import os
 
 
-def build_rag_pipeline(file_path: str,chunk_size: int = 1000, chunk_overlap: int = 200, top_k: int = 3, fetch_k: int = 20, temperature: float = 0.7):
-    file_format = os.path.splitext(file_path)[1].lower()
-    if file_format == ".pdf":
-        chunks, documents = load_and_split_pdf(file_path, chunk_size, chunk_overlap) # Load pdf và cắt chunk
-    elif file_format == ".docx":
-        chunks, documents = load_and_split_docx(file_path)
-    vectorstore = create_faiss_vectorstore(chunks) # Tạo FAISS obj
-    retriever = get_retriever(vectorstore, top_k, fetch_k) # Gán FAISS sang retriever
+def build_rag_pipeline(
+        list_file_path, chunk_size=1000, chunk_overlap=200,
+        top_k=3, fetch_k=20, temperature=0.7,
+        filter_metadata=None # Dùng khi nếu user chọn filter cho multi file
+    ):
+    
+    all_chunks = [] # Gộp hết các chunk trong các file thành 1 (cái này chứa các obj Document)
+    all_documents = []
+    for file_path in list_file_path:
+        file_format = os.path.splitext(file_path)[1].lower()
+        if file_format == ".pdf":
+            chunks, documents = load_and_split_pdf(file_path, chunk_size, chunk_overlap)  # Load pdf và cắt chunk
+        elif file_format == ".docx":
+            chunks, documents = load_and_split_docx(file_path, chunk_size, chunk_overlap)
+        all_chunks.extend(chunks) 
+        all_documents.extend(documents)
+
+    vectorstore = create_faiss_vectorstore(all_chunks) # Tạo FAISS obj
+    # retriever = get_retriever(vectorstore, top_k, fetch_k, filter_metadata) # Gán FAISS sang retriever
     hybrid_retriever = create_hybrid_retriever(
         vectorstore=vectorstore,
-        chunks=chunks,
+        chunks=all_chunks,
         top_k=top_k,
         fetch_k=fetch_k,
         bm25_weight=0.35,   
@@ -53,6 +64,6 @@ def build_rag_pipeline(file_path: str,chunk_size: int = 1000, chunk_overlap: int
     return (
         qa_chain,
         vectorstore,
-        chunks,
-        documents,
+        all_chunks,
+        all_documents,
     )

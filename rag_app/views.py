@@ -8,10 +8,18 @@ from django.shortcuts import render
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from rag.pipeline import build_rag_pipeline
+from rag.retriever import get_retriever
+from rag.hybrid_retriever import create_hybrid_retriever
 
 rag_chain = None
 current_pdf_path = None
 logger = None
+# Thêm để xử lý mutil file
+vectorstore_global = None   
+top_k_global = 3           
+fetch_k_global = 20         
+all_chunks_global =[]
+uploaded_file_name = []
 
 def get_or_create_chat_sessions(request):
     if 'chat_sessions' not in request.session:
@@ -50,9 +58,9 @@ def index(request): # <WSGIRequest: GET '/'>
 
 @csrf_exempt # Bỏ qua kiểm tra csrf token 
 def upload_pdf(request): # request <WSGIRequest: POST '/upload/'>
-    global rag_chain
-    global current_pdf_path
-    global logger
+    global rag_chain, current_pdf_path, logger
+    global vectorstore_global, top_k_global, fetch_k_global
+    global all_chunks_global, uploaded_file_name
     
     if request.method == "POST":
         chunk_size = int(request.POST.get("chunk_size", 1000))
@@ -61,34 +69,41 @@ def upload_pdf(request): # request <WSGIRequest: POST '/upload/'>
         fetch_k = int(request.POST.get("fetch_k", 20))
         temperature = float(request.POST.get("temperature", 0.7))
         logger = create_logger()
-        file = request.FILES.get("file") # lấy biến file PDF từ FormData từ hàm upload bên frontend.
-        file_format = os.path.splitext(file.name)[1].lower()
-        request.session['file_name']= file.name
 
-        files= request.FILES.getlist("file")
-        
+        files = request.FILES.getlist("files") # lấy biến file PDF từ FormData từ hàm upload bên frontend.
         try:
-            logger.info(f"File: {file.name}")
-            if file.size > 50 * 1024 * 1024:
-                logger.error("Lỗi File lớn hơn 50MB")
-                return JsonResponse({
-                    "success": False,
-                    "detail": "Kích thước File phải bé hơn 50MB"
-                }) 
-            elif file_format not in [".pdf", ".docx"]:
-                logger.error("Lỗi sai định dạng File")
-                return JsonResponse({
-                    "success": False,
-                    "detail": "Chỉ hỗ trợ file PDF, DOCX! Vui lòng chọn file có định dạng .pdf, .docx"
-                }) 
-            
-            path = os.path.join("data", file.name)
-            with open(path, "wb+") as f: # Tạo pdf mới trên ổ đĩa dưới dạng nhị phân
-                for chunk in file.chunks(): # Ghi từng đoạn nhỏ vào file trong thư mục data dưới dạng binary
-                    f.write(chunk)
-            qa_chain, vectorstore, chunks, documents = build_rag_pipeline(path, chunk_size,chunk_overlap,top_k,fetch_k,temperature)
+            for file in files:
+                logger.info(f"File: {file.name}")
+                file_format = os.path.splitext(file.name)[1].lower()
+                if file.size > 50 * 1024 * 1024:
+                    logger.error("Lỗi File lớn hơn 50MB")
+                    return JsonResponse({
+                        "success": False,
+                        "detail": f"Kích thước File {file.name} phải bé hơn 50MB"
+                    }) 
+                elif file_format not in [".pdf", ".docx"]:
+                    logger.error("Lỗi sai định dạng File")
+                    return JsonResponse({
+                        "success": False,
+                        "detail": "Chỉ hỗ trợ file PDF, DOCX! Vui lòng chọn file có định dạng .pdf, .docx"
+                    }) 
+                
+            list_file_path = []
+            for file in files:
+                path = os.path.join("data", file.name)
+                with open(path, "wb+") as f: # Tạo pdf mới trên ổ đĩa dưới dạng nhị phân
+                    for chunk in file.chunks(): # Ghi từng đoạn nhỏ vào file trong thư mục data dưới dạng binary
+                        f.write(chunk)
+                list_file_path.append(path)
+
+            qa_chain, vectorstore, chunks, documents = build_rag_pipeline(list_file_path, chunk_size,chunk_overlap,top_k,fetch_k,temperature)
             rag_chain = qa_chain # RetrieverQA
-            current_pdf_path = path # Đường dẫn pdf
+            vectorstore_global = vectorstore
+            top_k_global = top_k              
+            fetch_k_global = fetch_k
+            all_chunks_global = chunks
+            current_pdf_path = list_file_path  # Đường dẫn pdf
+            uploaded_file_name = [os.path.basename(p) for p in list_file_path]
 
             logger.info(f"Pages: {len(documents)}")
             logger.info(f"Chunks: {len(chunks)}")
@@ -96,9 +111,11 @@ def upload_pdf(request): # request <WSGIRequest: POST '/upload/'>
 
             chat_sessions = get_or_create_chat_sessions(request)
             chat_id = chat_id = str(uuid.uuid4())
+            file_title = files[0].name if len(files) == 1 else f"{len(files)} files"
             chat_sessions.append({
                 "id": chat_id,
-                "file": file.name,
+                "file": file_title,
+                "files": uploaded_file_name,
                 "created_at": datetime.now().strftime("%H:%M"),
                 "history": []
             })
@@ -111,7 +128,8 @@ def upload_pdf(request): # request <WSGIRequest: POST '/upload/'>
                 "pages": len(documents),
                 "chunks": len(chunks),
                 "pdf_path": path,
-                "current_chat_id":chat_id
+                "current_chat_id":chat_id,
+                "uploaded_files": uploaded_file_name,
             })
         except Exception as e:
             logger.error(f"Lỗi upload: {str(e)}")
@@ -124,9 +142,9 @@ def upload_pdf(request): # request <WSGIRequest: POST '/upload/'>
 @csrf_exempt
 def ask_question(request): # request <WSGIRequest: POST '/ask/'>
      # urls gọi hàm này thì hàm này nhận request
-    global rag_chain
-    global current_pdf_path
-    global logger
+    global rag_chain, current_pdf_path, logger
+    global vectorstore_global, top_k_global, fetch_k_global
+    global all_chunks_global, uploaded_file_name
     if request.method == "POST":
         if rag_chain is None: # Kiểm tra RetrieverQA
             if logger:
@@ -137,14 +155,22 @@ def ask_question(request): # request <WSGIRequest: POST '/ask/'>
         
         try: 
             data = json.loads(request.body)
-            query = data.get("query")
+            query = data.get("query") # Lấy câu hỏi
+            selected_file_filter = data.get("file_name") # Lấy file filter user chọn
+            filter_metadata = None
+            if selected_file_filter: # ĐANG SAI HÀM
+                filter_metadata = {"file_name": f"{selected_file_filter}"} # tên file_name phải match với bên pdf_loader
+                retriever = create_hybrid_retriever( vectorstore_global, all_chunks_global, top_k_global, fetch_k_global, 
+                                                        filter_metadata = filter_metadata) 
+                rag_chain.retriever = retriever # Khi user đổi filter để hỏi thì sửa lại RetrieverQA
+
             logger.info(f"User: {query}")
             result = rag_chain.invoke({ # Đặt câu hỏi và sinh câu trả lời và source_documents nếu bật
                 "question": query
             })
             logger.info(f"Bot: Trả lời thành công")
             logger.info("------------------------------------------------------------")
-            print(result)
+            # print(result)
 
             # Lưu vào session chat
             chat_sessions = get_or_create_chat_sessions(request)
@@ -168,7 +194,7 @@ def ask_question(request): # request <WSGIRequest: POST '/ask/'>
             for i, doc in enumerate(result["source_documents"], 1):
                 metadata = doc.metadata
                 page = metadata.get("page") 
-                print(f"IDDD: {i} -- DOCCCCCCCC: {doc} -------- METADATAAAAA {doc.metadata} ----------- PAGEEEE: {page}")
+                # print(f"IDDD: {i} -- DOCCCCCCCC: {doc} -------- METADATAAAAA {doc.metadata} ----------- PAGEEEE: {page}")
                 if isinstance(page, int):
                     page = page + 1  # vì nhiều loader bắt đầu từ 0
 
@@ -178,13 +204,14 @@ def ask_question(request): # request <WSGIRequest: POST '/ask/'>
                     "snippet": doc.page_content[:280] + "..." if len(doc.page_content) > 280 else doc.page_content,
                     "page": page,
                     "short_highlight": doc.page_content.replace('\n', ' ').strip(),
-                    "source": os.path.basename(metadata.get("source", current_pdf_path)),
+                    "source": os.path.basename(metadata.get("file_name", current_pdf_path)),
+                    "source_path": "data/" + metadata.get("file_name", ""),
                     "chunk_index": metadata.get("chunk_index", "N/A"),
                     "full_text_for_highlight": doc.page_content.strip()
                 })
             return JsonResponse({
                 "result": result["answer"],
-                "pdf_path": current_pdf_path,
+                "pdf_path": current_pdf_path[0] if isinstance(current_pdf_path, list) else current_pdf_path,
                 "source_documents": sources,
                 "chat_sessions": chat_sessions,
                 "current_chat_id": request.session.get("current_chat_id")
@@ -243,9 +270,9 @@ def delete_chat(request): # Xóa chat dựa trên id
 
 @csrf_exempt
 def switch_document(request):
-    global rag_chain
-    global current_pdf_path
-    global logger
+    global rag_chain, current_pdf_path, logger
+    global vectorstore_global, top_k_global, fetch_k_global
+    global all_chunks_global, uploaded_file_name
 
     if request.method == "POST":
         logger = create_logger() if logger is None else logger
@@ -278,9 +305,14 @@ def switch_document(request):
                         f.write(chunk)
                 file_name = file.name
             
-            qa_chain, vectorstore, chunks, documents = build_rag_pipeline(path, chunk_size,chunk_overlap,top_k,fetch_k,temperature)
+            qa_chain, vectorstore, chunks, documents = build_rag_pipeline( path, chunk_size, chunk_overlap, top_k, fetch_k, temperature)
             rag_chain = qa_chain
+            vectorstore_global = vectorstore
+            top_k_global = top_k
+            fetch_k_global = fetch_k
+            all_chunks_global = chunks
             current_pdf_path = path
+            uploaded_file_name = [file_name]
 
             logger.info(f"Đổi tài liệu thành công: {file_name} | Pages: {len(documents)} | Chunks: {len(chunks)}")
             chat_sessions = get_or_create_chat_sessions(request)
