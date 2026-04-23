@@ -168,6 +168,7 @@ def ask_question(request): # request <WSGIRequest: POST '/ask/'>
             result = rag_chain.invoke({ # Đặt câu hỏi và sinh câu trả lời và source_documents nếu bật
                 "question": query
             })
+            result["source_documents"] = result["source_documents"][:top_k_global]
             logger.info(f"Bot: Trả lời thành công")
             logger.info("------------------------------------------------------------")
             # print(result)
