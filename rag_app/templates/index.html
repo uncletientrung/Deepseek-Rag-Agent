@@ -232,6 +232,7 @@
     <script>
         // ==================== KHỞI TẠO BIẾN ====================
         let currentPdfPath = null;
+        let list_file_updated = null;       // Danh sách file đang upload 
         let currentChatId = null; // Chat đang xem hiện tại
         let activeChatId = null; // Chat được phép nhắn
         const questionInput = document.getElementById("questionInput");
@@ -272,7 +273,7 @@
                 if (!check_history) {
                     questionInput.placeholder = "Vui lòng upload tài liệu PDF trước...";
                 } else {
-                    questionInput.placeholder = "Không thể gửi tin nhắn khi đang xem lịch sử";
+                    questionInput.placeholder = "Không thể gửi tin nhắn khi đang xem lịch sử/ đổi tài liệu";
                 }
 
                 askBtn.style.backgroundColor = "#6c757d";
@@ -567,6 +568,7 @@
                 loadingMsg.remove();
 
                 if (data.success) {
+                    list_file_updated = files;
                     activeChatId = data.current_chat_id;
                     currentPdfPath = data.pdf_path;
                     statusBar.style.display = "flex";
@@ -603,6 +605,8 @@
             if (!question || !currentPdfPath) return;
 
             const fileFilter = document.getElementById("fileFilterSelect").value || null;
+            console.log(fileFilter);
+            
 
             addMessage("user", question);
             questionInput.value = "";
@@ -776,16 +780,16 @@
 
         // ==================== ĐỔI TÀI LIỆU MỚI====================
        async function changeDocument(choice_file = false) {
-            let file = null;
             if (choice_file) { // Nếu thay đổi file
                 const input = document.createElement('input');
                 input.type = 'file';
                 input.accept = '.pdf,.docx';
+                input.multiple = true;
                 input.onchange = async (e) => {
-                    const selectedFile = e.target.files[0];
-                    if (!selectedFile) return;
+                    const selected_files = e.target.files;
+                    if (!selected_files) return;
                     
-                    await processChangeDocument(selectedFile);
+                    await processChangeDocument(selected_files);
                 };
                 input.click();
                 return;
@@ -795,24 +799,26 @@
                 showToast("Chưa có file để xử lý!", "error");
                 return;
             }
+            toggleInput(false, true);
             await processChangeDocument(false);
         }
 
-        async function processChangeDocument(file = false) {
+        async function processChangeDocument(selected_files = false) {
             let fileName = null;
-            if (!file) { // Nếu không truyền file (tức chỉ sửa chỉ số)
-                fileName = currentPdfPath.split(/[/\\]/).pop();
+            if (!selected_files) { // Nếu không truyền file (tức chỉ sửa chỉ số)
+                // fileName = currentPdfPath.split(/[/\\]/).pop();
+                fileName = "SỬA THÔNG SỐ"
             } else { // Nếu truyền file vào
-                fileName = file.name;
+                fileName = Array.from(selected_files).map(file => file.name).join(", ");
             }
             
             const loadingMsg = addMessage("ai", `Đang xử lý tài liệu: <strong>${fileName}</strong>`);
             try {
                 const formData = new FormData();
-                if(!file == false){
-                    formData.append("file", file);
-                }else{
-                    formData.append("path", currentPdfPath);
+                if(selected_files != false){
+                    for (let file of selected_files) {
+                        formData.append("files", file);
+                    }
                 }
                 formData.append("chunk_size", Number(chunk_size.value));
                 formData.append("chunk_overlap", Number(chunk_overlap.value));
@@ -830,12 +836,13 @@
 
                 if (data.success) {
                     currentPdfPath = data.pdf_path;
-
                     statusBar.style.display = "flex";
+                    updateFileFilter(data.uploaded_file_name);
                     document.getElementById("pageCount").textContent = data.pages || "0";
                     document.getElementById("chunkCount").textContent = data.chunks || "0";
-
-                    addMessage("ai", `Đã cập nhật tài liệu:<br><strong>${data.file_name}</strong>`);
+                    document.getElementById("faissStatus").textContent = "FAISS Ready";
+                    let uploaded_file_name = Array.from(data.uploaded_file_name).map(f_name => f_name).join(", ");
+                    addMessage("ai",`<strong> ${uploaded_file_name}</strong> đã được cập nhật thành công`);
                     showToast("Cập nhật thành công!", "success");
                     await loadHistory();
                 } else {

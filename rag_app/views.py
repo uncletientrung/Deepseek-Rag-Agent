@@ -276,60 +276,67 @@ def switch_document(request):
 
     if request.method == "POST":
         logger = create_logger() if logger is None else logger
-        path = request.POST.get("path")
-        print(path)
+        files = request.FILES.getlist("files") # lấy biến file PDF từ FormData từ hàm upload bên frontend.
         chunk_size = int(request.POST.get("chunk_size", 1000))
         chunk_overlap = int(request.POST.get("chunk_overlap", 200))
         top_k = int(request.POST.get("top_k", 3))
         fetch_k = int(request.POST.get("fetch_k", 20))
         temperature = float(request.POST.get("temperature", 0.7))
+        
         try:
-            if path:
-                file_name = os.path.basename(path)
-                print(file_name)
-            else:
-                file = request.FILES.get("file")
-                if not file:
-                    return JsonResponse({"success": False, "detail": "Không tìm thấy file"}, status=400)
+            list_file_path = [] # Danh sách các file có data/ sẽ truyền vào để build 
 
-                file_format = os.path.splitext(file.name)[1].lower()
-                
-                if file.size > 50 * 1024 * 1024:
-                    return JsonResponse({"success": False, "detail": "File phải nhỏ hơn 50MB"})
-                if file_format not in [".pdf", ".docx"]:
-                    return JsonResponse({"success": False, "detail": "Chỉ hỗ trợ PDF và DOCX"})
+            if files: # Nếu thêm switch file mới chứ không phải sửa thông số
+                for file in files:
+                    logger.info(f"Đổi File: {file.name}")
+                    file_format = os.path.splitext(file.name)[1].lower()
+                    if file.size > 50 * 1024 * 1024:
+                        logger.error("Lỗi File lớn hơn 50MB")
+                        return JsonResponse({
+                            "success": False,
+                            "detail": f"Kích thước File {file.name} phải bé hơn 50MB"
+                        }) 
+                    elif file_format not in [".pdf", ".docx"]:
+                        logger.error("Lỗi sai định dạng File")
+                        return JsonResponse({
+                            "success": False,
+                            "detail": "Chỉ hỗ trợ file PDF, DOCX! Vui lòng chọn file có định dạng .pdf, .docx"
+                        })
+                    path = os.path.join("data", file.name)
+                    with open(path, "wb+") as f: # Tạo pdf mới trên ổ đĩa dưới dạng nhị phân
+                        for chunk in file.chunks(): # Ghi từng đoạn nhỏ vào file trong thư mục data dưới dạng binary
+                            f.write(chunk)
+                        list_file_path.append(path)
 
-                path = os.path.join("data", file.name)
-                with open(path, "wb+") as f:
-                    for chunk in file.chunks():
-                        f.write(chunk)
-                file_name = file.name
-            
-            qa_chain, vectorstore, chunks, documents = build_rag_pipeline( path, chunk_size, chunk_overlap, top_k, fetch_k, temperature)
-            rag_chain = qa_chain
+            else:   # Nếu chỉ sửa thông số
+                for file_name in uploaded_file_name:
+                    path = os.path.join("data", file_name)
+                    list_file_path.append(path)
+
+            qa_chain, vectorstore, chunks, documents = build_rag_pipeline((list_file_path), chunk_size,chunk_overlap,top_k,fetch_k,temperature)
+            rag_chain = qa_chain # RetrieverQA
             vectorstore_global = vectorstore
-            top_k_global = top_k
+            top_k_global = top_k              
             fetch_k_global = fetch_k
             all_chunks_global = chunks
-            current_pdf_path = path
-            uploaded_file_name = [file_name]
+            current_pdf_path = list_file_path  # Đường dẫn pdf
+            uploaded_file_name = [os.path.basename(p) for p in list_file_path]
 
-            logger.info(f"Đổi tài liệu thành công: {file_name} | Pages: {len(documents)} | Chunks: {len(chunks)}")
             chat_sessions = get_or_create_chat_sessions(request)
             current_chat_id = request.session.get("current_chat_id")
             for chat in chat_sessions:
                 if chat["id"] == current_chat_id:
-                    chat["file"] = file_name  # Đổi tên file trong session
+                    chat["file"] = uploaded_file_name  # Đổi tên file trong session
                     break
 
             request.session.modified = True
             return JsonResponse({
                 "success": True,
                 "message": "Đã đổi sang tài liệu mới",
-                "file_name": file_name,
                 "pages": len(documents),
                 "chunks": len(chunks),
-                "pdf_path": path,
+                "pdf_path": uploaded_file_name[0],
+                "uploaded_file_name": uploaded_file_name,
                 "current_chat_id": current_chat_id
             })
 
