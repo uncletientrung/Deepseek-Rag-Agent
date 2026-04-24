@@ -9,6 +9,7 @@ from rag.promt import VIETNAMESE_PROMPT
 from rag.hybrid_retriever import create_hybrid_retriever
 import os
 import json
+import re
 from rag.reranker import CrossEncoderReranker
 from rag.rerank_retriever import RerankRetriever
 
@@ -20,7 +21,7 @@ def query_rewriter(llm, query): # Viết lại câu hỏi
         Viết lại câu hỏi người dùng để phù hợp hơn cho việc tìm kiếm trong tài liệu.
 
         Quy tắc:
-        - Viết bằng tiếng Việt
+        - Trả lời bằng tiếng Việt
         - Không đổi nghĩa
         - Làm rõ ý hơn
         - Ngắn gọn
@@ -33,8 +34,6 @@ def query_rewriter(llm, query): # Viết lại câu hỏi
     response = llm.invoke(prompt)
     return get_llm_text(response).strip()
 
-def confidence_scorer(): # Điểm tin cậy
-    pass
 def build_rag_pipeline(
         list_file_path, chunk_size=1000, chunk_overlap=200,
         top_k=3, fetch_k=15, temperature=0.7,
@@ -63,8 +62,8 @@ def build_rag_pipeline(
     #     vector_weight=0.65
     # )
     base_retriever = create_hybrid_retriever(
-        vectorstore=vectorstore,
-        chunks=chunks,
+        vectorstore=vectorstore,    
+        chunks=all_chunks,
         top_k=fetch_k, 
         fetch_k=fetch_k,
         bm25_weight=0.35,  vector_weight=0.65 
@@ -109,86 +108,182 @@ def build_rag_pipeline(
         all_documents,
     )
 
-def multi_hop_reasoning(rag_chain, llm, query: str, so_buoc_lap=2): # Lặp lại câu trả lời để lấy final answer
-    current_query = query
-    final_answer = ""
-    all_source = []
-    for step in range(so_buoc_lap):
-        result = rag_chain.invoke({"question": current_query})
-        answer = result["answer"] # Lấy câu trả lời
-        sources = result["source_documents"]
-        all_source.extend(sources)
-
-        prompt_multi_hop = f"""
-            Dựa trên câu hỏi và câu trả lời sau, hãy xác định:
-
-            - Nếu cần thêm thông tin → viết lại câu hỏi rõ hơn
-            - Nếu đã đủ → trả về đúng từ: DONE
-
-            Câu hỏi: {current_query}
-            Câu trả lời: {answer}
-
-            Trả lời:
-        """
-
-        new_query = get_llm_text(llm.invoke(prompt_multi_hop)).strip() # Viết lại câu hỏi
-        if new_query == "DONE":
-            final_answer = answer
-            break
-        current_query = new_query
-        final_answer = answer
-
-    return final_answer, all_source
 
 
+def multi_hop_reasoning(rag_chain, llm, written_query):
+    result = rag_chain.invoke({"question": written_query})
+    final_answer = result["answer"]
+    all_source = result.get("source_documents", [])
+    # Đánh giá lần 1
+    confidence = self_rag_evaluate(llm, written_query, final_answer, all_source)
+    print("---------- Đánh giá lần 1 ---------------")
+    print(confidence)
+    print(written_query)
+    print(final_answer)
 
+    if confidence > 0.7:
+        return final_answer, all_source, confidence
 
-def self_rag_evaluate(llm, question, answer, contexts): # Tự đánh giá câu trả lời
-    context_text = "\n\n".join([c.page_content for c in contexts])
+    # Tách câu hỏi và đánh giá lần 2
+    sub_queries = sub_query(llm, written_query)
+    print("---------Danh sách câu hỏi sub -------------")
+    print(sub_queries)
+    collected_docs = []
+    for q in sub_queries:
+        print("---------- Câu hỏi sub ---------------")
+        print(q)
+        result = rag_chain.invoke({"question": q})
+        collected_docs.extend(result.get("source_documents", []))
+
+    # remove duplicates
+    collected_docs = deduplicate_docs(collected_docs)
+
+    # Step 4: FINAL synthesis (🔥 quan trọng)
+    context = "\n\n".join([d.page_content for d in collected_docs])
+
     prompt = f"""
-        Bạn là hệ thống kiểm tra độ chính xác của câu trả lời AI.
+        Dựa trên các thông tin sau, hãy trả lời câu hỏi:
 
-        Nhiệm vụ:
-        Đánh giá câu trả lời dựa trên NGỮ CẢNH được cung cấp.
+        Câu hỏi: {written_query}
 
-        QUY TẮC:
-        - Chỉ dựa vào Context
-        - Không suy đoán
-        - Trả về JSON hợp lệ
+        Tài liệu:
+        {context}
+        
+        Quy tắc:
+            - Chỉ sử dụng thông tin trong Context (Tài liệu)
+            - Không suy diễn
+            - Không thêm thông tin bên ngoài
+            - Nếu không có thông tin thì trả lời:
+            "Tôi không có thông tin về vấn đề này trong tài liệu được cung cấp."
+                                                    
+        Format:
+            Giới thiệu ngắn (1 câu)
+            Thông tin chính:
+            - ...
+            - ...
+            - ...
+                                                            
+        Yêu cầu trình bày:
+            - Trả lời bằng tiếng Việt
+            - Ngắn gọn và dễ đọc khoảng 4-5 câu
+            - Có câu mở đầu giới thiệu đối tượng
+            - Sau đó liệt kê thông tin bằng gạch đầu dòng
+            - Không liệt kê thô như PDF
+            - Không được in ra các tiêu đề như:
+            "Giới thiệu ngắn (1 câu)"
+            "Thông tin chính"
+            - Không được nhắc đến từ "nguồn", "cid"
 
-        FORMAT:
-        {{
-            "supported": true/false,
-            "confidence": 0.0 - 1.0,
-            "problem": "không có / thiếu thông tin / sai nội dung",
-            "improved_answer": "câu trả lời cải thiện"
-        }}
 
-        CÂU HỎI:
-        {question}
-
-        CÂU TRẢ LỜI:
-        {answer}
-
-        NGỮ CẢNH:
-        {context_text}
-
-        Trả về JSON:
+        Trả lời:
     """
 
     response = llm.invoke(prompt)
-    text = get_llm_text(response)
-    try:
-        return json.loads(text)
-    except:
-        return {
-            "supported": False,
-            "confidence": 0.36666,
-            "problem": "parse_error",
-            "improved_answer": answer
-        }
+    final_answer = get_llm_text(response)
 
+    # Đánh giá lần 2
+    confidence = self_rag_evaluate(llm, written_query, final_answer, collected_docs)
+    print("---------- Đánh giá lần 2 ---------------")
+    print(confidence)
+    print(final_answer)
+
+    return final_answer, collected_docs, confidence
+
+def sub_query(llm, query):
+    prompt = f"""
+        Bạn là hệ thống phân rã câu hỏi cho multi-hop reasoning.
+
+        Nhiệm vụ:
+        Chia câu hỏi thành các câu hỏi nhỏ hơn để tìm kiếm từng bước.
+        
+        Quy tắc:
+        - Câu hỏi là TIẾNG VIỆT
+        - Tối đa 3-4 câu hỏi con
+        - Không lặp lại câu gốc
+        - Không đổi nghĩa gốc
+        - Mỗi câu hỏi phải độc lập để truy vấn tài liệu
+        - Bạn chỉ được trả về JSON list, KHÔNG markdown, KHÔNG giải thích.
+
+
+        Ví dụ:
+        Câu hỏi: "AI ảnh hưởng gì đến giáo dục và thị trường lao động?"
+        Trả lời:
+        ["AI ảnh hưởng gì đến giáo dục?", "AI ảnh hưởng gì đến thị trường lao động?"]
+
+        Câu hỏi: {query}
+
+        Trả lời:
+    """
+    response = llm.invoke(prompt)
+    text = get_llm_text(response)
+    text = re.sub(r"```json", "", text)
+    text = re.sub(r"```", "", text).strip()
+    match = re.search(r"\[.*\]", text, re.DOTALL)
+    if match:
+        text= match.group()
+    print("----- Tách câu hỏi ở sub_q ------")
+    print(text)
+    print("-----------------")
+    try:
+        result = json.loads(match.group()) 
+        if not result: # Nếu cắt trả về không có câu hỏi nào
+            return [query]
+        return result
+    except Exception as e:
+        print("Parse error:", e)
+        return [query]
+
+def self_rag_evaluate(llm, question, answer, contexts):
+    context_text = "\n".join([doc.page_content for doc in contexts])
+
+    prompt = f"""
+        Bạn là hệ thống đánh giá câu trả lời (Self-RAG evaluator).
+
+        Nhiệm vụ:
+        Đánh giá mức độ đáng tin cậy của câu trả lời dựa trên context.
+
+        Tiêu chí:
+        - Đúng thông tin (correctness)
+        - Có dựa trên context (groundedness)
+        - Không bịa
+
+        Trả về CHỈ 1 số từ 0.00 đến 1.00:
+        - 0.00 = sai hoàn toàn
+        - 1.00 = rất chính xác và đầy đủ
+
+        Câu hỏi:
+        {question}
+
+        Context:
+        {context_text}
+
+        Câu trả lời:
+        {answer}
+
+        Điểm:
+    """
+    response = llm.invoke(prompt)
+    text = get_llm_text(response)
+
+    try:
+        score = float(re.findall(r"\d+\.?\d*", text)[0])
+        return min(max(score, 0.0), 1.0)
+    except:
+        return 0.5
+    
 def get_llm_text(response): # Kiểm tra xem có hàm content không
     if hasattr(response, "content"):
         return response.content
     return response
+def deduplicate_docs(docs):
+    seen = set()
+    unique_docs = []
+    for doc in docs:
+        # dùng nội dung làm key để kiểm tra trùng
+        key = doc.page_content.strip()
+
+        if key not in seen:
+            seen.add(key)
+            unique_docs.append(doc)
+
+    return unique_docs
