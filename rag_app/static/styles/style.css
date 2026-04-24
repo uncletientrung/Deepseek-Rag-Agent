@@ -1011,3 +1011,84 @@ body {
     background: #FFC107;
     color: white;
 }
+/* ==================== INLINE SOURCES DƯỚI TIN NHẮN AI ==================== */
+.message-sources {
+    margin-top: 10px;
+    border-top: 1px solid #e9ecef;
+    padding-top: 10px;
+}
+
+.sources-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #007BFF;
+    font-size: 0.88rem;
+    font-weight: 600;
+    padding: 4px 0;
+    transition: color 0.2s;
+}
+
+.sources-toggle:hover { color: #0056b3; }
+
+.sources-toggle i.toggle-icon {
+    font-size: 0.8rem;
+    transition: transform 0.25s ease;
+}
+
+.sources-toggle.open i.toggle-icon {
+    transform: rotate(180deg);
+}
+
+.sources-list {
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.sources-list.open { display: flex; }
+
+.source-inline-item {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-left: 3px solid #007BFF;
+    border-radius: 0 8px 8px 0;
+    padding: 10px 14px;
+    transition: all 0.2s ease;
+}
+
+.source-inline-item:hover {
+    background: #f0f8ff;
+    box-shadow: 0 2px 8px rgba(0,123,255,0.08);
+}
+
+.source-inline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.source-inline-snippet {
+    font-size: 0.88rem;
+    color: #444;
+    line-height: 1.55;
+    margin-bottom: 6px;
+}
+
+.source-inline-file {
+    font-size: 0.78rem;
+    color: #6c757d;
+    display: block;
+    margin-bottom: 6px;
+}
+
+.source-inline-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}

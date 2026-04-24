@@ -37,6 +37,8 @@ Project-LLMs-Rag-Agent/
 ├── document_processing/ 
 │   ├── pdf_loader.py
 │   └── docx_loader.py
+│   └── ocr_and_pdf_loader.py
+│   └── ocr_loader.py
 │
 ├── vector_store/       
 │   └── faiss_store.py

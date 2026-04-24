@@ -156,23 +156,6 @@
         </aside>
     </div>
 
-    <!-- Source Panel --->
-    <div id="sourcePanel" class="source-panel">
-        <div class="source-panel-toggle" id="sourcePanelToggle">
-            <div class="source-panel-toggle-left">
-                <i class="fas fa-link"></i>
-                <span id="sourcePanelTitle">Nguồn tham khảo</span>
-            </div>
-            <div class="source-panel-toggle-right">
-                <span id="sourcePanelCount" class="source-count-badge">0</span>
-                <i class="fas fa-chevron-up" id="sourcePanelIcon"></i>
-            </div>
-        </div>
-        <div class="source-panel-body" id="sourcePanelBody">
-            <div class="source-panel-list" id="sourcePanelList"></div>
-        </div>
-    </div>
-
     <div id="toast" class="toast">
         <i class="fas fa-exclamation-circle"></i>
         <span id="toastMessage"></span>
@@ -257,9 +240,6 @@
         const canvas = document.getElementById('pdfCanvas');
         const ctx = canvas.getContext('2d');
 
-        const sourcePanel = document.getElementById('sourcePanel');
-        const sourcePanelToggle = document.getElementById('sourcePanelToggle');
-
         // ==================== HÀM CHUNG ====================
         function toggleInput(enabled, check_history = false) {
             if (enabled) {
@@ -340,6 +320,83 @@
             document.getElementById("modalContent").textContent = fullText;
             document.getElementById("sourceModal").style.display = "flex";
         }
+
+        // ==================== RENDER SOURCES INLINE DƯỚI TIN NHẮN ====================
+        function renderInlineSources(aiMessageDiv, sources, pdfPath) {
+            const contentDiv = aiMessageDiv.querySelector(".message-content");
+
+            const wrapper = document.createElement("div");
+            wrapper.className = "message-sources";
+
+            // Nút toggle "📄 Nguồn tham khảo (N đoạn)"
+            const toggle = document.createElement("button");
+            toggle.className = "sources-toggle";
+            toggle.innerHTML = `
+                <i class="fas fa-file-alt"></i>
+                Nguồn tham khảo (${sources.length} đoạn)
+                <i class="fas fa-chevron-down toggle-icon"></i>
+            `;
+
+            const list = document.createElement("div");
+            list.className = "sources-list";
+
+            // Mặc định là đóng
+            toggle.classList.remove("open");
+            list.classList.remove("open");
+
+            toggle.addEventListener("click", () => {
+                toggle.classList.add("open");
+                list.classList.add("open");
+            });
+
+            sources.forEach((doc) => {
+                const snippet = doc.snippet || doc.page_content.substring(0, 200).replace(/\n/g, " ");
+                const fileName = doc.source || "";
+
+                const item = document.createElement("div");
+                item.className = "source-inline-item";
+                item.innerHTML = `
+                    <div class="source-inline-header">
+                        <span class="source-badge">Đoạn ${doc.id}</span>
+                        <span class="source-page">Trang <strong>${doc.page ?? "N/A"}</strong></span>
+                    </div>
+                    <div class="source-inline-snippet">${snippet}</div>
+                    <small class="source-inline-file">📄 ${fileName}</small>
+                    <div class="source-inline-actions">
+                        <button class="btn-small btn-view">
+                            <i class="fas fa-eye"></i> Xem nội dung gốc
+                        </button>
+                        <button class="btn-small btn-hl">
+                            <i class="fas fa-highlighter"></i> Highlight trong PDF
+                        </button>
+                    </div>
+                `;
+
+                item.querySelector(".btn-view").addEventListener("click", () => {
+                    showSourceModal(doc.page_content, `Trang ${doc.page}`);
+                });
+
+                item.querySelector(".btn-hl").addEventListener("click", async () => {
+                    let path = doc.source_path || pdfPath || currentPdfPath;
+                    if (path && !path.startsWith("data/")) {
+                        path = "data/" + path.split(/[/\\]/).pop();
+                    }
+                    await openPdfWithHighlight(path, parseInt(doc.page), doc.full_text_for_highlight || doc.page_content);
+                });
+
+                list.appendChild(item);
+            });
+
+            wrapper.appendChild(toggle);
+            wrapper.appendChild(list);
+            contentDiv.appendChild(wrapper);
+
+            // Cuộn xuống sau khi render
+            setTimeout(() => {
+                chatArea.scrollTo({ top: chatArea.scrollHeight, behavior: "smooth" });
+            }, 50);
+        }
+
         // ==================== Dialog Confirm ====================
         function confirmCustom(message) { // Dialog confirm
             return new Promise((resolve) => {
@@ -630,7 +687,11 @@
                     }
                     // ==================== HIỂN THỊ SOURCES + HIGHLIGHT ====================
                     if (data.source_documents && data.source_documents.length > 0) {
-                        showSourcePanel(data.source_documents, data.pdf_path || currentPdfPath);
+                        renderInlineSources(
+                            aiMessageDiv,
+                            data.source_documents,
+                            data.pdf_path || currentPdfPath
+                        );
                     }
                 } else {
                     aiMessageDiv.querySelector(".message-content").innerHTML = "Không nhận được câu trả lời.";
@@ -640,54 +701,7 @@
                 aiMessageDiv.querySelector(".message-content").innerHTML = "Lỗi khi gọi API.";
             }
         }
-
-        // ==================== SOURCE PANEL ====================
-        function showSourcePanel(sources, pdfPath) {
-            const list = document.getElementById('sourcePanelList'); // Danh sách src
-            const badge = document.getElementById('sourcePanelCount');
-            const title = document.getElementById('sourcePanelTitle');
-
-            badge.textContent = sources.length;
-            title.textContent = `Nguồn tham khảo (${sources.length})`;
-            list.innerHTML = '';
-
-            sources.forEach((doc) => {
-                const snippet = doc.snippet || doc.page_content.substring(0, 200).replace(/\n/g, ' ');
-
-                const item = document.createElement('div');
-                item.className = 'source-panel-item';
-                item.innerHTML = `
-                    <div class="source-panel-item-header">
-                        <span class="source-badge">Nguồn ${doc.id}</span>
-                        <span class="source-page">Trang <strong>${doc.page ?? 'N/A'}</strong></span>
-                    </div>
-                    <div class="source-panel-item-snippet">${snippet}</div>
-                    <small class="source-panel-item-file">${doc.source}</small>
-                    <div class="source-panel-item-actions">
-                        <button class="btn-small btn-view">
-                            <i class="fas fa-eye"></i> Xem nội dung gốc
-                        </button>
-                        <button class="btn-small btn-hl">
-                            <i class="fas fa-highlighter"></i> Highlight trong PDF
-                        </button>
-                    </div>
-                `;
-
-                item.querySelector('.btn-view').addEventListener('click', () => {
-                    showSourceModal(doc.page_content, `Trang ${doc.page}`);
-                });
-
-                item.querySelector('.btn-hl').addEventListener('click', async () => {
-                    let path = doc.source_path || pdfPath || currentPdfPath;
-                    if (path && !path.startsWith('data/')) {
-                        path = 'data/' + path.split(/[/\\]/).pop();
-                    }
-                    await openPdfWithHighlight(path, parseInt(doc.page), doc.full_text_for_highlight || doc.page_content);
-                });
-
-                list.appendChild(item);
-            });
-        }
+        
         // ==================== Cập nhật filter dropdown ====================
         function updateFileFilter(fileNames) {
             const select = document.getElementById("fileFilterSelect");
@@ -1036,10 +1050,6 @@
                 const modal = document.getElementById("pdfViewerModal");
                 if (modal) modal.style.display = "none";
             });
-        });
-                // Mở nguồn tham khảo
-        sourcePanelToggle.addEventListener('click', () => {
-            sourcePanel.classList.toggle('open');
         });
 
         document.getElementById("sourceModal").addEventListener('click', function(e) {
