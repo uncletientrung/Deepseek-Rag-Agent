@@ -1,0 +1,51 @@
+Project-LLMs-Rag-Agent/
+│
+├── manage.py
+├── requirements.txt
+├── README.md
+├── .gitignore
+│
+├── rag_django/          ← project Django
+│   ├── __init__.py
+│   ├── settings.py
+│   ├── urls.py
+│   ├── asgi.py
+│   └── wsgi.py
+│
+├── rag_app/             ← app Django
+│   ├── templates/
+│   │    └── index.html
+│   │
+│   ├── static/
+│   │    └── styles/
+│   │         └── style.css
+│   │
+│   ├── views.py
+│   ├── urls.py
+│   └── apps.py
+│
+├── rag/             
+│   ├── pipeline.py
+│   ├── embedding.py
+│   ├── retriever.py
+│   ├── hybrid_retriever.py
+│   ├── promt.py
+│   ├── corag.py
+│   ├── reranker.py
+│   ├── rerank_retriever.py
+│   └── llm.py
+│
+├── document_processing/ 
+│   ├── pdf_loader.py
+│   └── docx_loader.py
+│   └── ocr_and_pdf_loader.py
+│   └── ocr_loader.py
+│
+├── vector_store/       
+│   └── faiss_store.py
+│
+├── data/
+│
+├── documentation/
+│
+└── Logging/
