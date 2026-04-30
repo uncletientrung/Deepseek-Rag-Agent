@@ -183,7 +183,7 @@ def build_coRag(rag_chain, hybrid_retriever, llm, rewritter_query, use_best_of_n
     print(sub_queries)
 
     # 2. Lập kế hoạch truy xuất
-    print("--------------------Lập kế hoạch ------------------")
+    print("--------------------Lập kế hoạch ------------------") # PLAN KHÔNG CẦN THIẾT TRONG CORAG
     plan = plan_retrieval(llm, rewritter_query, sub_queries)
     print(plan)
 
