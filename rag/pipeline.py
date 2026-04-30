@@ -14,7 +14,7 @@ import json
 import re
 from rag.reranker import CrossEncoderReranker
 from rag.rerank_retriever import RerankRetriever
-from rag.self_rag_evaluate import self_rag_evaluate
+
 
 def query_rewriter(llm, query): # Viết lại câu hỏi
     prompt = f"""
@@ -126,7 +126,7 @@ def build_multi_hop_pipeline(rag_chain, llm, written_query):
         return multi_hop_reasoning(rag_chain, llm, written_query, chat_history)
     
     # Đánh giá lần 1
-    confidence = self_rag_evaluate(written_query, final_answer, all_source)
+    confidence = self_rag_evaluate(llm, written_query, final_answer, all_source)
     print("---------- Đánh giá lần 1 ---------------")
     print(confidence)
     print(written_query)
@@ -160,7 +160,7 @@ def multi_hop_reasoning(rag_chain, llm, written_query, chat_history):
     final_answer = get_llm_text(response)
 
     # Đánh giá lần 2
-    confidence = self_rag_evaluate( written_query, final_answer, collected_docs)
+    confidence = self_rag_evaluate(llm, written_query, final_answer, collected_docs)
     print("---------- Đánh giá lần 2 ---------------")
     print(confidence)
     print(final_answer)
@@ -168,32 +168,46 @@ def multi_hop_reasoning(rag_chain, llm, written_query, chat_history):
     return final_answer, collected_docs, confidence
 
 def sub_query(llm, query):
-    query = query_rewriter(llm, query)
+    prompt = f"""Bạn là chuyên gia phân rã câu hỏi (Query Decomposition) cho multi-hop RAG.
+        Nhiệm vụ: Phân tích câu hỏi tiếng Việt và chia thành các câu hỏi phụ (sub-questions) cần thiết để trả lời toàn diện và logic.
 
-    prompt = f"""
-        Bạn là hệ thống phân rã câu hỏi cho multi-hop reasoning.
+        ### Quy tắc nghiêm ngặt:
+        - Câu hỏi gốc là tiếng Việt → Tất cả sub-questions cũng phải bằng tiếng Việt.
+        - Tối đa 3 câu hỏi phụ (ưu tiên 2-3 nếu cần thiết).
+        - Mỗi sub-question phải **độc lập**, có thể dùng để tìm kiếm tài liệu riêng lẻ.
+        - Không được thay đổi ý nghĩa gốc của câu hỏi.
+        - Không được thêm thông tin mới hoặc suy diễn ngoài câu hỏi gốc.
+        - Không lặp lại câu hỏi gốc.
+        - Nếu câu hỏi chỉ cần 1 bước → trả về list chứa đúng 1 câu hỏi (gần giống gốc nhưng rõ ràng hơn).
+        - Phải giữ nguyên thông tin quan trọng (tên riêng, sự kiện, khái niệm...).
+        - Trả về **CHỈ** một JSON array hợp lệ, không có bất kỳ chữ nào khác.
 
-        Nhiệm vụ:
-        Chia câu hỏi thành các câu hỏi nhỏ hơn để tìm kiếm từng bước.
-        
-        Quy tắc:
-        - Câu hỏi là TIẾNG VIỆT
-        - Tối đa 3-4 câu hỏi con
-        - Không lặp lại câu gốc
-        - Không đổi nghĩa gốc
-        - Mỗi câu hỏi phải độc lập để truy vấn tài liệu
-        - Bạn chỉ được trả về JSON list, KHÔNG markdown, KHÔNG giải thích.
-
-
-        Ví dụ:
+        ### Ví dụ 1:
         Câu hỏi: "AI ảnh hưởng gì đến giáo dục và thị trường lao động?"
         Trả lời:
-        ["AI ảnh hưởng gì đến giáo dục?", "AI ảnh hưởng gì đến thị trường lao động?"]
+        ["AI ảnh hưởng như thế nào đến giáo dục?", "AI ảnh hưởng như thế nào đến thị trường lao động?"]
 
-        Câu hỏi: {query}
-
+        ### Ví dụ 2:
+        Câu hỏi: "Ai là người thắng cuộc bầu cử tổng thống Mỹ năm 2024?"
         Trả lời:
-    """
+        ["Ai thắng cuộc bầu cử tổng thống Mỹ năm 2024?"]
+
+        ### Ví dụ 3:
+        Câu hỏi: "Quy trình sản xuất và xuất khẩu cà phê của Việt Nam hiện nay ra sao?"
+        Trả lời:
+        ["Quy trình sản xuất cà phê tại Việt Nam hiện nay như thế nào?", "Việt Nam xuất khẩu cà phê sang những thị trường nào và tình hình ra sao?"]
+
+        Câu hỏi cần phân rã:
+        {query}
+
+        Trả về đúng định dạng JSON sau (không thêm bất kỳ nội dung nào khác):
+
+        [
+        "câu hỏi phụ 1",
+        "câu hỏi phụ 2",
+        ...
+        ]
+        """
     response = llm.invoke(prompt)
     text = get_llm_text(response)
     text = re.sub(r"```json", "", text)
@@ -213,7 +227,7 @@ def sub_query(llm, query):
         print("Parse error:", e)
         return [query]
 
-def self_rag_evaluate2(llm, question, answer, contexts):
+def self_rag_evaluate(llm, question, answer, contexts):
     context_text = "\n\n".join([f"--- Document {i+1} ---\n{doc.page_content}" 
                                for i, doc in enumerate(contexts)])
     
