@@ -180,7 +180,7 @@ def ask_question(request): # request <WSGIRequest: POST '/ask/'>
             logger.info(f"Câu hỏi viết lại: {rewritter_query}")
             final_answer, all_document, confidence = multi_hop_reasoning( rag_chain, llm, rewritter_query) # Lấy final aw và all source
 
-            build_coRag(rag_chain, hybrid_retriever, llm, rewritter_query, True)
+            # build_coRag(rag_chain, hybrid_retriever, llm, rewritter_query, True)
             logger.info(f"Bot: Trả lời thành công")
             logger.info("------------------------------------------------------------")
 

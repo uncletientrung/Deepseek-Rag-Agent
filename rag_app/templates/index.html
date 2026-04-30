@@ -156,22 +156,6 @@
         </aside>
     </div>
 
-    <!-- Source Panel --->
-    <div id="sourcePanel" class="source-panel">
-        <div class="source-panel-toggle" id="sourcePanelToggle">
-            <div class="source-panel-toggle-left">
-                <i class="fas fa-link"></i>
-                <span id="sourcePanelTitle">Nguồn tham khảo</span>
-            </div>
-            <div class="source-panel-toggle-right">
-                <span id="sourcePanelCount" class="source-count-badge">0</span>
-                <i class="fas fa-chevron-up" id="sourcePanelIcon"></i>
-            </div>
-        </div>
-        <div class="source-panel-body" id="sourcePanelBody">
-            <div class="source-panel-list" id="sourcePanelList"></div>
-        </div>
-    </div>
 
     <div id="toast" class="toast">
         <i class="fas fa-exclamation-circle"></i>
@@ -257,9 +241,6 @@
         const canvas = document.getElementById('pdfCanvas');
         const ctx = canvas.getContext('2d');
 
-        const sourcePanel = document.getElementById('sourcePanel');
-        const sourcePanelToggle = document.getElementById('sourcePanelToggle');
-
         // ==================== HÀM CHUNG ====================
         function toggleInput(enabled, check_history = false) {
             if (enabled) {
@@ -315,24 +296,29 @@
             return msgDiv;
         }
 
-        async function streamResponse(aiMessageDiv, fullText) { // Xử lý thanh cuộn
-            const contentDiv = aiMessageDiv.querySelector(".message-content");
-            contentDiv.innerHTML = "";
-            let i = 0;
-            const words = fullText.split(" ");
+        function streamResponse(aiMessageDiv, fullText) {
+            return new Promise((resolve) => {
+                const contentDiv = aiMessageDiv.querySelector(".message-content");
+                contentDiv.innerHTML = "";
+                let i = 0;
+                const words = fullText.split(" ");
 
-            const interval = setInterval(() => {
-                if (i < words.length) {
-                    contentDiv.innerHTML += words[i] + " ";
-                    i++;
-                    if ((chatArea.scrollHeight - chatArea.scrollTop - chatArea.clientHeight) < 100) {
-                        chatArea.scrollTo({ top: chatArea.scrollHeight, behavior: "auto" });
+                const interval = setInterval(() => {
+                    if (i < words.length) {
+                        contentDiv.innerHTML += words[i] + " ";
+                        i++;
+                        if ((chatArea.scrollHeight - chatArea.scrollTop - chatArea.clientHeight) < 100) {
+                            chatArea.scrollTo({ top: chatArea.scrollHeight, behavior: "auto" });
+                        }
+                    } else {
+                        clearInterval(interval);
+                        setTimeout(() => {
+                            chatArea.scrollTo({ top: chatArea.scrollHeight, behavior: "smooth" });
+                            resolve(); // ← báo hiệu đã xong
+                        }, 50);
                     }
-                } else {
-                    clearInterval(interval);
-                    setTimeout(() => chatArea.scrollTo({ top: chatArea.scrollHeight, behavior: "smooth" }), 50);
-                }
-            }, 25);
+                }, 25);
+            });
         }
         
         function showSourceModal(fullText, pageInfo) {
@@ -630,7 +616,7 @@
                     }
                     // ==================== HIỂN THỊ SOURCES + HIGHLIGHT ====================
                     if (data.source_documents && data.source_documents.length > 0) {
-                        showSourcePanel(data.source_documents, data.pdf_path || currentPdfPath);
+                        renderSourcesInline(aiMessageDiv, data.source_documents, question, data.result, data.pdf_path || currentPdfPath);
                     }
                 } else {
                     aiMessageDiv.querySelector(".message-content").innerHTML = "Không nhận được câu trả lời.";
@@ -641,53 +627,177 @@
             }
         }
 
-        // ==================== SOURCE PANEL ====================
-        function showSourcePanel(sources, pdfPath) {
-            const list = document.getElementById('sourcePanelList'); // Danh sách src
-            const badge = document.getElementById('sourcePanelCount');
-            const title = document.getElementById('sourcePanelTitle');
-
-            badge.textContent = sources.length;
-            title.textContent = `Nguồn tham khảo (${sources.length})`;
-            list.innerHTML = '';
-
-            sources.forEach((doc) => {
-                const snippet = doc.snippet || doc.page_content.substring(0, 200).replace(/\n/g, ' ');
-
-                const item = document.createElement('div');
-                item.className = 'source-panel-item';
-                item.innerHTML = `
-                    <div class="source-panel-item-header">
-                        <span class="source-badge">Nguồn ${doc.id}</span>
-                        <span class="source-page">Trang <strong>${doc.page ?? 'N/A'}</strong></span>
-                    </div>
-                    <div class="source-panel-item-snippet">${snippet}</div>
-                    <small class="source-panel-item-file">${doc.source}</small>
-                    <div class="source-panel-item-actions">
-                        <button class="btn-small btn-view">
-                            <i class="fas fa-eye"></i> Xem nội dung gốc
-                        </button>
-                        <button class="btn-small btn-hl">
-                            <i class="fas fa-highlighter"></i> Highlight trong PDF
-                        </button>
-                    </div>
-                `;
-
-                item.querySelector('.btn-view').addEventListener('click', () => {
-                    showSourceModal(doc.page_content, `Trang ${doc.page}`);
-                });
-
-                item.querySelector('.btn-hl').addEventListener('click', async () => {
-                    let path = doc.source_path || pdfPath || currentPdfPath;
-                    if (path && !path.startsWith('data/')) {
-                        path = 'data/' + path.split(/[/\\]/).pop();
-                    }
-                    await openPdfWithHighlight(path, parseInt(doc.page), doc.full_text_for_highlight || doc.page_content);
-                });
-
-                list.appendChild(item);
-            });
+        // ==================== HIGHLIGHT N-GRAM (giống Code 1) ====================
+    function highlightNgram(content, question, answer) {
+        function escapeHtml(text) {
+            return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         }
+
+        const STOP = new Set([
+            "là","của","và","các","có","cho","trong","với","về","được","này","đó",
+            "khi","nào","như","hay","hoặc","tôi","bạn","hãy","theo","đã","một",
+            "những","từ","sau","tại","đến","không","bởi","vì","nên","mà","lên",
+            "ra","vào","đi","the","of","and","for","in","is","to","a","an","it",
+            "on","at","by","or","be","that","this","are","was"
+        ]);
+
+        function tokenize(text) {
+            return [...text.toLowerCase().matchAll(/[\wÀ-ỹ]{2,}/g)]
+                .map(m => m[0]).filter(t => !STOP.has(t));
+        }
+
+        function bigrams(tokens) {
+            const s = new Set();
+            for (let i = 0; i < tokens.length - 1; i++) s.add(tokens[i] + "_" + tokens[i+1]);
+            return s;
+        }
+
+        function trigrams(tokens) {
+            const s = new Set();
+            for (let i = 0; i < tokens.length - 2; i++) s.add(tokens[i] + "_" + tokens[i+1] + "_" + tokens[i+2]);
+            return s;
+        }
+
+        function jaccard(a, b) {
+            if (!a.size || !b.size) return 0;
+            let inter = 0;
+            a.forEach(v => { if (b.has(v)) inter++; });
+            return inter / (a.size + b.size - inter);
+        }
+
+        // Tách câu chunk
+        const SPLIT = /(?<=[.!?…])\s+(?=[A-ZÀÁÂ0-9\-])|[\n]{2,}/;
+        const chunkSents = content.split(SPLIT).map(s => s.trim()).filter(s => s.length >= 40);
+        if (!chunkSents.length) return escapeHtml(content);
+
+        // Tách câu answer
+        let ansSents = (answer || "").split(SPLIT).map(s => s.trim()).filter(s => s.length >= 20);
+        if (!ansSents.length && question) ansSents = [question];
+        if (!ansSents.length) return escapeHtml(content);
+
+        function scoreChunkSent(sent) {
+            const ct = tokenize(sent);
+            const cb = bigrams(ct), ct3 = trigrams(ct);
+            let best = 0;
+            ansSents.forEach(a => {
+                const at = tokenize(a);
+                const ab = bigrams(at), at3 = trigrams(at);
+                const bi = jaccard(cb, ab);
+                const tri = (ct3.size && at3.size) ? jaccard(ct3, at3) : 0;
+                const score = tri > 0 ? 0.4 * bi + 0.6 * tri : bi;
+                if (score > best) best = score;
+            });
+            return best;
+        }
+
+        const scored = chunkSents.map(s => ({ s, sc: scoreChunkSent(s) }))
+            .sort((a, b) => b.sc - a.sc);
+
+        const maxScore = scored[0].sc;
+        if (maxScore < 0.05) return escapeHtml(content);
+
+        const threshold = Math.max(0.05, maxScore * 0.5);
+        const toHighlight = scored.filter(x => x.sc >= threshold).slice(0, 2).map(x => x.s);
+
+        if (!toHighlight.length) return escapeHtml(content);
+
+        // Span-based rendering
+        let result = content;
+        const spans = [];
+        toHighlight.forEach(sent => {
+            const probe = sent.slice(0, 25).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const m = result.search(new RegExp(probe));
+            if (m === -1) return;
+            const search = result.slice(m, m + Math.floor(sent.length * 1.5) + 50);
+            const endM = search.search(/[.!?…](\s|$)/);
+            const end = endM !== -1 ? m + endM + 1 : m + sent.length;
+            spans.push([m, Math.min(end, result.length)]);
+        });
+
+        if (!spans.length) return escapeHtml(content);
+
+        spans.sort((a, b) => a[0] - b[0]);
+        const merged = [spans[0].slice()];
+        spans.slice(1).forEach(([s, e]) => {
+            const last = merged[merged.length - 1];
+            if (s <= last[1] + 10) last[1] = Math.max(last[1], e);
+            else merged.push([s, e]);
+        });
+
+        let html = "", cursor = 0;
+        merged.forEach(([s, e]) => {
+            html += escapeHtml(content.slice(cursor, s));
+            html += `<mark style="background:linear-gradient(120deg,#FFD700 0%,#FFF176 100%);padding:2px 5px;border-radius:4px;font-weight:600">${escapeHtml(content.slice(s, e))}</mark>`;
+            cursor = e;
+        });
+        html += escapeHtml(content.slice(cursor));
+        return html;
+    }
+
+    // ==================== HIỂN THỊ NGUỒN INLINE (dưới message AI) ====================
+    function renderSourcesInline(aiMessageDiv, sources, question, answer, pdfPath) {
+        // Xóa sources cũ nếu có (re-render)
+        const existing = aiMessageDiv.querySelector('.inline-sources');
+        if (existing) existing.remove();
+        const contentDiv = aiMessageDiv.querySelector(".message-content");
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'inline-sources';
+
+        // Toggle button
+        const toggle = document.createElement('button');
+        toggle.className = 'inline-sources-toggle';
+        toggle.innerHTML = `<i class="fas fa-book-open"></i> Nguồn tham khảo <span class="inline-sources-badge">${sources.length}</span> <i class="fas fa-chevron-down inline-sources-icon"></i>`;
+        wrapper.appendChild(toggle);
+
+        // Body
+        const body = document.createElement('div');
+        body.className = 'inline-sources-body';
+
+        sources.forEach(doc => {
+            const highlighted = highlightNgram(doc.page_content || "", question, answer);
+            const snippet = doc.snippet || (doc.page_content || "").substring(0, 200).replace(/\n/g, ' ');
+            const page = doc.page ?? 'N/A';
+            const sourceName = doc.source || '';
+
+            const card = document.createElement('div');
+            card.className = 'inline-source-card';
+            card.innerHTML = `
+                <div class="inline-source-header">
+                    <span class="source-badge">Nguồn ${doc.id}</span>
+                    <span class="source-page">Trang <strong>${page}</strong></span>
+                    <small class="inline-source-file">${sourceName}</small>
+                </div>
+                <div class="inline-source-content" style="background:#f8f9fa;border-left:3px solid #007BFF;padding:10px 14px;border-radius:4px;font-size:13px;line-height:1.6;white-space:pre-wrap">${highlighted}</div>
+                <div class="inline-source-actions">
+                    <button class="btn-small btn-view"><i class="fas fa-eye"></i> Xem đầy đủ</button>
+                    <button class="btn-small btn-hl"><i class="fas fa-highlighter"></i> Highlight PDF</button>
+                </div>
+            `;
+
+            card.querySelector('.btn-view').addEventListener('click', () => {
+                showSourceModal(doc.page_content, `Trang ${page}`);
+            });
+            card.querySelector('.btn-hl').addEventListener('click', async () => {
+                let path = doc.source_path || pdfPath;
+                if (path && !path.startsWith('data/')) path = 'data/' + path.split(/[/\\]/).pop();
+                await openPdfWithHighlight(path, parseInt(page), doc.full_text_for_highlight || doc.page_content);
+            });
+
+            body.appendChild(card);
+        });
+
+        wrapper.appendChild(body);
+        contentDiv.appendChild(wrapper);
+
+        // Toggle collapse
+        let open = false;
+        toggle.addEventListener('click', () => {
+            open = !open;
+            body.style.display = open ? 'flex' : 'none';
+            toggle.querySelector('.inline-sources-icon').style.transform = open ? 'rotate(180deg)' : '';
+        });
+    }
         // ==================== Cập nhật filter dropdown ====================
         function updateFileFilter(fileNames) {
             const select = document.getElementById("fileFilterSelect");
@@ -1037,9 +1147,6 @@
             });
         });
                 // Mở nguồn tham khảo
-        sourcePanelToggle.addEventListener('click', () => {
-            sourcePanel.classList.toggle('open');
-        });
 
         document.getElementById("sourceModal").addEventListener('click', function(e) {
             if (e.target === this) this.style.display = "none";
