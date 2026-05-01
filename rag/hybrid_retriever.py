@@ -3,6 +3,8 @@ from langchain_community.retrievers import BM25Retriever
 from rag.retriever import get_retriever
 from langchain.schema import BaseRetriever
 from typing import Any, Optional
+from rag.reranker import CrossEncoderReranker
+from rag.rerank_retriever import RerankRetriever
 
 class FilteredVectorRetriever(BaseRetriever): # Custom lại Retriever với vector
     vectorstore: Any
@@ -22,13 +24,15 @@ class FilteredVectorRetriever(BaseRetriever): # Custom lại Retriever với vec
 
 
 def create_hybrid_retriever(vectorstore, chunks, top_k= 3, fetch_k=20, bm25_weight=0.35, vector_weight=0.65, filter_metadata =None):
-    if filter_metadata:
-        chunks = [ doc for doc in chunks
-                    if doc.metadata.get("file_name") == filter_metadata.get("file_name")]
-    if not chunks: 
-        chunks = []
+    # Filter chunks cho BM25
+    filtered_chunks = chunks
+    if filter_metadata and filter_metadata.get("file_name"):
+        filtered_chunks = [
+            doc for doc in chunks 
+                if doc.metadata.get("file_name") == filter_metadata.get("file_name")
+        ]
 
-    bm25_retriever = BM25Retriever.from_documents(chunks) # keyword search
+    bm25_retriever = BM25Retriever.from_documents(filtered_chunks) # keyword search
     bm25_retriever.k = fetch_k
     
     # vector_retriever = get_retriever(vectorstore, k=top_k, fetch_k=fetch_k) # semantic search
@@ -44,4 +48,12 @@ def create_hybrid_retriever(vectorstore, chunks, top_k= 3, fetch_k=20, bm25_weig
         weights=[bm25_weight, vector_weight]
     )
 
-    return combine_Search   
+    reranker = CrossEncoderReranker()
+    hybrid_retriever = RerankRetriever(
+        base_retriever=combine_Search,
+        reranker=reranker,
+        top_k=top_k,
+        fetch_k=fetch_k
+    )
+
+    return hybrid_retriever   

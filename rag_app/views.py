@@ -69,6 +69,7 @@ def upload_pdf(request): # request <WSGIRequest: POST '/upload/'>
     global all_chunks_global, uploaded_file_name, llm, hybrid_retriever
     
     if request.method == "POST":
+        start = time.time()
         chunk_size = int(request.POST.get("chunk_size", 1000))
         chunk_overlap = int(request.POST.get("chunk_overlap", 200))
         top_k = int(request.POST.get("top_k", 3))
@@ -124,7 +125,7 @@ def upload_pdf(request): # request <WSGIRequest: POST '/upload/'>
             file_title = files[0].name if len(files) == 1 else f"{len(files)} files"
             chat_sessions.append({
                 "id": chat_id,
-                "file": file_title,
+                # "file": file_title,
                 "files": uploaded_file_name,
                 "created_at": datetime.now().strftime("%H:%M %d/%m/%Y"),
                 "history": []
@@ -132,7 +133,9 @@ def upload_pdf(request): # request <WSGIRequest: POST '/upload/'>
 
             request.session['current_chat_id'] = chat_id
             request.session.modified = True # Báo cho django biết session đã bị thay đổi và lưu lại
-
+            end = time.time()
+            print("Thời gian upload dữ liệu ")
+            print("Thời gian chạy:", end - start, "giây")
             return JsonResponse({ 
                 "success": True,
                 "pages": len(documents),
@@ -156,6 +159,7 @@ def ask_question(request): # request <WSGIRequest: POST '/ask/'>
     global vectorstore_global, top_k_global, fetch_k_global
     global all_chunks_global, uploaded_file_name, llm, hybrid_retriever
     if request.method == "POST":
+        start = time.time()
         if rag_chain is None: # Kiểm tra RetrieverQA
             if logger:
                 logger.warning("User hỏi nhưng chưa upload PDF")
@@ -166,19 +170,14 @@ def ask_question(request): # request <WSGIRequest: POST '/ask/'>
         try: 
             data = json.loads(request.body)
             query = data.get("query") # Lấy câu hỏi
-            selected_file_filter = data.get("file_name") # Lấy file filter user chọn
-            filter_metadata = None
-            if selected_file_filter: # ĐANG SAI HÀM
-                filter_metadata = {"file_name": f"{selected_file_filter}"} # tên file_name phải match với bên pdf_loader
-                retriever = create_hybrid_retriever( vectorstore_global, all_chunks_global, top_k_global, fetch_k_global, 
-                                                        filter_metadata = filter_metadata) 
-                rag_chain.retriever = retriever # Khi user đổi filter để hỏi thì sửa lại RetrieverQA
+            selected_file_filter = data.get("file_name") # Lấy file filter user chọn  
+            
             logger.info(f"User: {query}")
 
             # Xử lý self-RAG
-            rewritter_query = query_rewriter(llm, query) # Viết lại câu hỏi
-            logger.info(f"Câu hỏi viết lại: {rewritter_query}")
-            final_answer, all_document, confidence = build_multi_hop_pipeline( rag_chain, llm, query) # Lấy final aw và all source
+            # rewritter_query = query_rewriter(llm, query) # Viết lại câu hỏi
+            # logger.info(f"Câu hỏi viết lại: {rewritter_query}")
+            final_answer, all_document, confidence = build_multi_hop_pipeline( rag_chain, llm, query, selected_file_filter) # Lấy final aw và all source
 
             # build_coRag(rag_chain, hybrid_retriever, llm, rewritter_query, True)
             logger.info(f"Bot: Trả lời thành công")
@@ -203,11 +202,9 @@ def ask_question(request): # request <WSGIRequest: POST '/ask/'>
             request.session.modified = True # Báo session đã thay đổi
 
             sources = []
-            # result["source_documents"]
             for i, doc in enumerate(all_document, 1):
                 metadata = doc.metadata
                 page = metadata.get("page") 
-                # print(f"IDDD: {i} -- DOCCCCCCCC: {doc} -------- METADATAAAAA {doc.metadata} ----------- PAGEEEE: {page}")
                 if isinstance(page, int):
                     page = page + 1  # vì nhiều loader bắt đầu từ 0
 
@@ -222,12 +219,15 @@ def ask_question(request): # request <WSGIRequest: POST '/ask/'>
                     "chunk_index": metadata.get("chunk_index", "N/A"),
                     "full_text_for_highlight": doc.page_content.strip()
                 })
+            end = time.time()
+
+            print("Thời gian hỏi câu hỏi:", end - start, "giây")
             return JsonResponse({
                 "result": final_answer,
                 "confidence": confidence,
                 "rewritten_query": rewritter_query,
                 "pdf_path": current_pdf_path[0] if isinstance(current_pdf_path, list) else current_pdf_path,
-                "source_documents": sources[:3],
+                "source_documents": sources,
                 "chat_sessions": chat_sessions,
                 "current_chat_id": request.session.get("current_chat_id")
             })
@@ -342,7 +342,7 @@ def switch_document(request):
             current_chat_id = request.session.get("current_chat_id")
             for chat in chat_sessions:
                 if chat["id"] == current_chat_id:
-                    chat["file"] = uploaded_file_name  # Đổi tên file trong session
+                    chat["files"] = uploaded_file_name  # Đổi tên số lượng file trong session
                     break
 
             request.session.modified = True

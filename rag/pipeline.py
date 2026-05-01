@@ -12,9 +12,10 @@ from rag.hybrid_retriever import create_hybrid_retriever
 import os
 import json
 import re
-from rag.reranker import CrossEncoderReranker
-from rag.rerank_retriever import RerankRetriever
 
+
+retriever_all_file = None
+per_file_retrievers = {} # Mỗi file 1 retriever
 
 def query_rewriter(llm, query): # Viết lại câu hỏi
     prompt = f"""
@@ -42,7 +43,8 @@ def build_rag_pipeline(
         top_k=3, fetch_k=15, temperature=0.7,
         filter_metadata=None # Dùng khi nếu user chọn filter cho multi file
     ):
-    
+    global retriever_all_file, per_file_retrievers
+
     all_chunks = [] # Gộp hết các chunk trong các file thành 1 (cái này chứa các obj Document)
     all_documents = []
     for file_path in list_file_path:
@@ -64,21 +66,27 @@ def build_rag_pipeline(
     #     bm25_weight=0.35,   
     #     vector_weight=0.65
     # )
-    base_retriever = create_hybrid_retriever(
+    hybrid_retriever_reranker = create_hybrid_retriever( # Rerank trong này
         vectorstore=vectorstore,    
         chunks=all_chunks,
-        top_k=fetch_k, 
+        top_k=top_k, 
         fetch_k=fetch_k,
-        bm25_weight=0.35,  vector_weight=0.65 
+        bm25_weight=0.35,  vector_weight=0.65,
+        filter_metadata= None
     )
-
-    reranker = CrossEncoderReranker()
-    hybrid_retriever = RerankRetriever(
-        base_retriever=base_retriever,
-        reranker=reranker,
-        top_k=top_k,
-        fetch_k=fetch_k
-    )
+    retriever_all_file = hybrid_retriever_reranker # Retriever cho tất cả file
+    if len(list_file_path) >= 2:
+        for file_path in list_file_path:   # hoặc extract từ all_chunks
+            file_name = os.path.basename(file_path)
+            file_chunks = [doc for doc in all_chunks if doc.metadata.get("file_name") == file_name]
+            per_file_retrievers[file_name] = create_hybrid_retriever(
+                vectorstore=vectorstore,
+                chunks=file_chunks,           # chỉ truyền chunks của file đó
+                top_k=top_k,
+                fetch_k=fetch_k,
+                bm25_weight=0.35,  vector_weight=0.65,
+                filter_metadata={"file_name": file_name}
+            )
 
     llm = get_llm(temperature=temperature) # Tạo Ollama
     chatMemory = ConversationBufferMemory(
@@ -89,7 +97,7 @@ def build_rag_pipeline(
 
     qa_chain = ConversationalRetrievalChain.from_llm(
         llm=llm,
-        retriever=hybrid_retriever,
+        retriever=retriever_all_file,
         memory=chatMemory,
         chain_type="stuff", # Nối các chunk lại vảo promt
         combine_docs_chain_kwargs={"prompt": VIETNAMESE_PROMPT},
@@ -104,16 +112,27 @@ def build_rag_pipeline(
     #     return_source_documents=True,  # Hiển thị nguồn
     # )
     qa_chain.memory.clear() # reset memory mỗi lần 
+
     return (
         qa_chain,
-        hybrid_retriever,
+        retriever_all_file,
         vectorstore,
         all_chunks,
         all_documents,
     )
 
 
-def build_multi_hop_pipeline(rag_chain, llm, written_query):
+def build_multi_hop_pipeline(rag_chain, llm, written_query, selected_file_filter=None):
+    global retriever_all_file, per_file_retrievers
+    if selected_file_filter and selected_file_filter.lower() != None:
+        current_retriever = per_file_retrievers.get(selected_file_filter)
+    else:
+        current_retriever = retriever_all_file
+    if not current_retriever:
+        current_retriever = retriever_all_file
+
+    rag_chain.retriever = current_retriever
+
     result = rag_chain.invoke({"question": written_query})
     chat_history = rag_chain.memory.chat_memory.messages
     final_answer = result["answer"]
@@ -125,7 +144,7 @@ def build_multi_hop_pipeline(rag_chain, llm, written_query):
         print("Không có câu trả lời")
         return multi_hop_reasoning(rag_chain, llm, written_query, chat_history)
     
-    # Đánh giá lần 1
+    # # Đánh giá lần 1
     confidence = self_rag_evaluate(llm, written_query, final_answer, all_source)
     print("---------- Đánh giá lần 1 ---------------")
     print(confidence)
@@ -173,7 +192,7 @@ def sub_query(llm, query):
 
         ### Quy tắc nghiêm ngặt:
         - Câu hỏi gốc là tiếng Việt → Tất cả sub-questions cũng phải bằng tiếng Việt.
-        - Tối đa 3 câu hỏi phụ (ưu tiên 2-3 nếu cần thiết).
+        - Tối đa 2 câu hỏi phụ.
         - Mỗi sub-question phải **độc lập**, có thể dùng để tìm kiếm tài liệu riêng lẻ.
         - Không được thay đổi ý nghĩa gốc của câu hỏi.
         - Không được thêm thông tin mới hoặc suy diễn ngoài câu hỏi gốc.
@@ -228,73 +247,71 @@ def sub_query(llm, query):
         return [query]
 
 def self_rag_evaluate(llm, question, answer, contexts):
+    if not contexts or not answer or not answer.strip():
+        return 0.0
+    
     context_text = "\n\n".join([f"--- Document {i+1} ---\n{doc.page_content}" 
                                for i, doc in enumerate(contexts)])
     
-    prompt = f"""Bạn là một Self-RAG Evaluator nghiêm ngặt và khách quan bậc cao.
-        Nhiệm vụ của bạn là đánh giá chất lượng câu trả lời dựa trên context được cung cấp.
+    prompt = f"""Bạn là một evaluator chuyên đánh giá Hallucination và độ bám sát câu hỏi trong hệ thống RAG.
 
-        Tiêu chí đánh giá (đánh giá theo thang điểm chi tiết):
+Nhiệm vụ: Đánh giá câu trả lời dựa trên **CHỈ 2 tiêu chí** sau:
 
-        1. **Groundedness / Faithfulness (Không bịa đặt)**: 
-        - Câu trả lời có hoàn toàn dựa trên thông tin có trong Context không?
-        - Mọi claim/fact trong câu trả lời đều phải được hỗ trợ trực tiếp bởi Context.
-        - Không được thêm thông tin từ kiến thức chung hoặc suy luận quá mức.
+1. **Hallucination (Không bịa đặt)**: 
+   - Câu trả lời có chứa thông tin nào KHÔNG có trong Context không?
+   - Mọi thông tin, sự kiện, số liệu trong câu trả lời phải được hỗ trợ trực tiếp bởi Context.
 
-        2. **Correctness (Tính chính xác)**:
-        - Câu trả lời có đúng và chính xác với thông tin trong Context không?
-        - Có mâu thuẫn với Context không?
+2. **Relevance & Faithfulness (Độ bám sát câu hỏi)**:
+   - Câu trả lời có trực tiếp trả lời câu hỏi không?
+   - Có đi lạc đề hoặc trả lời thừa/thiếu so với ý câu hỏi không?
 
-        3. **Completeness (Tính đầy đủ)**:
-        - Câu trả lời có bao quát đầy đủ các thông tin quan trọng cần thiết để trả lời câu hỏi không?
-        - Có bỏ sót thông tin quan trọng có trong Context không?
+**Quy tắc chấm điểm nghiêm ngặt (0.0 - 1.0)**:
+- 0.0 - 0.3: Có hallucination rõ ràng hoặc hoàn toàn không trả lời đúng câu hỏi
+- 0.4 - 0.6: Có một phần hallucination hoặc chỉ trả lời được một phần câu hỏi
+- 0.7 - 0.85: Không hallucination, trả lời khá tốt nhưng còn thiếu sót nhỏ
+- 0.9 - 1.0: Không hallucination, trả lời chính xác, đầy đủ và bám sát câu hỏi
 
-        4. **Relevance (Tính liên quan)**:
-        - Câu trả lời có trực tiếp giải quyết câu hỏi không?
+Hãy suy nghĩ từng bước:
+1. Liệt kê các claim chính trong câu trả lời.
+2. Kiểm tra từng claim có được hỗ trợ bởi Context không.
+3. Đánh giá mức độ trả lời đúng câu hỏi.
+4. Đưa ra điểm số cuối cùng.
 
-        **Quy tắc nghiêm ngặt**:
-        - Nếu câu trả lời chứa **bất kỳ thông tin nào không có trong Context** → điểm giảm mạnh (hallucination).
-        - Nếu câu trả lời mâu thuẫn với Context → điểm rất thấp.
-        - Nếu câu trả lời chỉ đúng một phần → điểm trung bình.
-        - Chỉ đạt điểm cao khi **toàn bộ** nội dung đều được hỗ trợ bởi Context và trả lời đầy đủ + chính xác.
+Câu hỏi:
+{question}
 
-        Hãy suy nghĩ từng bước một (Chain-of-Thought):
+Context:
+{context_text}
 
-        Bước 1: Phân tích các claim chính trong câu trả lời.
-        Bước 2: Kiểm tra từng claim có được hỗ trợ bởi Context không (trích dẫn cụ thể nếu có).
-        Bước 3: Đánh giá tổng thể theo 4 tiêu chí trên.
-        Bước 4: Đưa ra điểm số cuối cùng.
+Câu trả lời cần đánh giá:
+{answer}
 
-        Câu hỏi:
-        {question}
+Trả về **CHỈ** một dòng theo đúng format sau, không thêm gì khác:
 
-        Context:
-        {context_text}
+Điểm: 0.XX
+Giải thích: (tối đa 1-2 câu ngắn gọn)
+"""
 
-        Câu trả lời cần đánh giá:
-        {answer}
-
-        Bây giờ, suy nghĩ kỹ và trả về **CHỈ** một số thập phân từ 0.00 đến 1.00 theo format sau:
-        Điểm: X.XX
-        Giải thích ngắn gọn (tùy chọn, tối đa 2-3 câu):
-        """
-
-    response = llm.invoke(prompt)
-    text = get_llm_text(response)
-    
     try:
-        # Tìm số thập phân (hỗ trợ cả 0.0 và 1.00, 0.85...)
-        scores = re.findall(r"Điểm:\s*(\d+\.?\d*)|(\d+\.?\d*)", text)
-        for s in scores:
-            score_str = next((x for x in s if x), None)
-            if score_str:
-                score = float(score_str)
-                return min(max(score, 0.0), 1.0)
-        # Fallback: tìm bất kỳ số nào hợp lệ
-        score = float(re.findall(r"\d+\.?\d*", text)[-1])
-        return min(max(score, 0.0), 1.0)
-    except:
-        return 0.5  # fallback an toàn
+        response = llm.invoke(prompt)
+        text = get_llm_text(response)
+
+        # Tìm điểm số
+        score_match = re.search(r"Điểm:\s*([0-9]*\.?[0-9]+)", text)
+        if score_match:
+            score = float(score_match.group(1))
+            return min(max(score, 0.0), 1.0)
+        
+        # Fallback: tìm bất kỳ số thập phân nào hợp lý
+        scores = re.findall(r"0\.\d+|1\.0|1", text)
+        if scores:
+            return min(max(float(scores[0]), 0.0), 1.0)
+
+        return 0.5
+
+    except Exception as e:
+        print(f"Lỗi self_rag_evaluate: {e}")
+        return 0.5
     
 def get_llm_text(response): # Kiểm tra xem có hàm content không
     if hasattr(response, "content"):
