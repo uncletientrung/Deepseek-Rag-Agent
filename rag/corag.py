@@ -1,214 +1,160 @@
-import os
 import json
 import re
+from typing import List, Dict, Any, Tuple
 
-
-def get_llm_text(response): # Kiểm tra xem có hàm content không
+def get_llm_text(response):
     if hasattr(response, "content"):
         return response.content
     return response
-# =========================
-# 1. REWRITE (sub-queries)
-# =========================
-def rewrite_query(llm, query):
+
+
+def rewrite_initial_query(llm, query: str) -> List[str]: # Tách câu hỏi
     prompt = f"""
         Bạn là hệ thống phân rã câu hỏi cho multi-hop reasoning.
+        Hãy chia câu hỏi sau thành tối đa 3 câu hỏi con độc lập, rõ ràng bằng tiếng Việt.
+        Câu hỏi gốc: {query}
+        Yêu cầu:
+        - Chỉ trả về JSON list, không giải thích, không markdown.
+        - Mỗi câu hỏi phải có thể truy vấn độc lập.
 
-        Nhiệm vụ:
-        Chia câu hỏi thành các câu hỏi nhỏ hơn để tìm kiếm từng bước.
-        
-        Quy tắc:
-        - Câu hỏi là TIẾNG VIỆT
-        - Tối đa 3-4 câu hỏi con
-        - Không lặp lại câu gốc
-        - Không đổi nghĩa gốc
-        - Mỗi câu hỏi phải độc lập để truy vấn tài liệu
-        - Bạn chỉ được trả về JSON list, KHÔNG markdown, KHÔNG giải thích.
-
-
-        Ví dụ:
-        Câu hỏi: "AI ảnh hưởng gì đến giáo dục và thị trường lao động?"
-        Trả lời:
-        ["AI ảnh hưởng gì đến giáo dục?", "AI ảnh hưởng gì đến thị trường lao động?"]
-
-        Câu hỏi: {query}
+        Ví dụ: 
+        ["Câu hỏi con 1?", "Câu hỏi con 2?", "Câu hỏi con 3?"]
 
         Trả lời:
     """
     response = llm.invoke(prompt)
     text = get_llm_text(response)
-    text = re.sub(r"```json", "", text)
-    text = re.sub(r"```", "", text).strip()
-    match = re.search(r"\[.*\]", text, re.DOTALL)
-    if match:
-        text= match.group()
-    print("----- Tách câu hỏi ở sub_q ------")
-    print(text)
-    print("-----------------")
+    text = re.sub(r"```json|```", "", text).strip()
     try:
-        result = json.loads(match.group()) 
-        if not result: # Nếu cắt trả về không có câu hỏi nào
-            return [query]
-        return result
-    except Exception as e:
-        print("Parse error:", e)
-        return [query]
+        match = re.search(r"\[.*\]", text, re.DOTALL)
+        if match:
+            return json.loads(match.group())
+    except:
+        pass
+    return [query]
 
-# =========================
-# 2. PLAN (lập kế hoạch truy xuất)
-# =========================
-def plan_retrieval(llm, query, sub_queries):
+
+def should_stop(llm, original_query: str, context: str, reasoning_trace: List[Dict]) -> bool:
+    """Kiểm tra xem đã đủ thông tin để trả lời chưa"""
+    if len(reasoning_trace) >= 5:  # giới hạn tối đa
+        return True
+    
     prompt = f"""
-        Bạn là một hệ thống lập kế hoạch cho CoRAG.
+        Câu hỏi gốc: {original_query}
 
-        Câu hỏi người dùng:
-        {query}
+        Ngữ cảnh đã thu thập được:
+        {context[-1500:]}  # chỉ lấy phần mới nhất để tránh token quá dài
 
-        Các truy vấn con:
-        {sub_queries}
+        Các bước suy luận trước đó:
+        {json.dumps(reasoning_trace[-3:], ensure_ascii=False, indent=2)}
 
-        Hãy tạo một kế hoạch truy xuất theo từng bước để tìm thông tin.
-
-        Yêu cầu:
-        - Chia thành các bước rõ ràng
-        - Mỗi bước nên mô tả cần tìm gì
-        - Trả về dạng danh sách các bước
+        Hỏi: Đã đủ thông tin để trả lời chính xác câu hỏi gốc chưa?
+        Trả lời chỉ bằng "YES" hoặc "NO".
     """
+    resp = get_llm_text(llm.invoke(prompt)).strip().upper()
+    return "YES" in resp
 
-    response = llm.invoke(prompt)
-    return get_llm_text(response).strip()
 
-# =========================
-# 3. MULTI-HOP RETRIEVAL
-# =========================
-def multi_hop_retrieval(hybrid_retriever, sub_queries):
+def iterative_corag(llm, hybrid_retriever, query: str, max_hops: int = 5, use_best_of_n: bool = False) -> Dict:
+    print("-------------------- BẮT ĐẦU ITERATIVE CoRAG ------------------")
     all_docs = []
-    for q in sub_queries:
-        docs = hybrid_retriever.get_relevant_documents(q)
-        all_docs.append(docs)
+    context_parts = [] # Chỉ chứa page_content của docs để đưa vào llm
+    reasoning_trace = [] # Ghi lại quá trình suy luận
+    unique_docs = set() # page_content của docs duy nhất
 
-    return all_docs
+    # Bước 1: Phân rã ban đầu
+    sub_queries = rewrite_initial_query(llm, query)
+    current_query = sub_queries[0] if sub_queries else query
+
+    for hop in range(max_hops): # Tạo vòng lặp cho multi hop
+        print(f"\nHop {hop+1}/{max_hops} - Query: {current_query}")
+        
+        docs = hybrid_retriever.get_relevant_documents(current_query) # Retrieve dựa trên câu hỏi hiện tại
+        new_docs = []
+        for doc in docs:
+            text = doc.page_content.strip()
+            if text not in unique_docs and text:
+                unique_docs.add(text)
+                new_docs.append(doc)
+                context_parts.append(text)
+        all_docs.extend(new_docs)
+        
+        # Intermediate reasoning
+        current_context = "\n\n".join(context_parts[-4:])  # chỉ 4 phần tử cuối
+        reason_prompt = f"""
+            Dựa trên thông tin vừa thu thập được, hãy suy luận xem nó góp phần trả lời câu hỏi gốc như thế nào.
+
+            Câu hỏi gốc: {query}
+            Thông tin mới: {current_context}
+
+            Suy luận ngắn gọn (2-4 câu):
+        """
+        reasoning = get_llm_text(llm.invoke(reason_prompt)).strip()
+        reasoning_trace.append({
+            "hop": hop + 1,
+            "sub_query": current_query,
+            "reasoning": reasoning,
+            "docs_count": len(new_docs)
+        })
+        
+        print(f"Reasoning: {reasoning[:200]}...")
+
+        # Kiểm tra đã đủ thông tin chưa nếu rồi thì dừng
+        full_context = "\n\n".join(context_parts)
+        if should_stop(llm, query, full_context, reasoning_trace):
+            print("   → Đủ thông tin, dừng sớm.")
+            break
+
+        # Reformulate query cho bước tiếp theo
+        reform_prompt = f"""
+            Câu hỏi gốc: {query}
+
+            Ngữ cảnh hiện tại: {full_context[-1200:]}
+
+            Các suy luận trước: {json.dumps([r["reasoning"] for r in reasoning_trace], ensure_ascii=False, indent=2)}
+
+            Hãy sinh ra **một câu hỏi tiếp theo** (bằng tiếng Việt) cần tìm kiếm để thu thập thêm thông tin quan trọng nhất cho câu trả lời.
+
+            Chỉ trả về đúng một câu hỏi, không giải thích.
+        """
+        next_query = get_llm_text(llm.invoke(reform_prompt)).strip()
+        current_query = next_query if next_query else query
+
+    # ================== TẠO CÂU TRẢ LỜI CUỐI CÙNG ==================
+    final_context = "\n\n".join(context_parts)
 
 
-# =========================
-# 4. GỘP NGỮ CẢNH
-# =========================
-def merge_docs(all_docs):
-    seen = set()
-    context = []
-    for docs in all_docs:
-        for d in docs:
-            text = d.page_content.strip()
-            if text not in seen:
-                seen.add(text)
-                context.append(text)
-
-    return "\n\n".join(context)
-
-
-# =========================
-# 5. SUY LUẬN + TẠO CÂU TRẢ LỜI
-# =========================
-def generate_answer(llm, query, context):
-    prompt = f"""
-        Bạn là một trợ lý AI thông minh.
-
-        Dựa vào ngữ cảnh bên dưới, hãy trả lời câu hỏi của người dùng.
+    answer_prompt = f"""
+        Bạn là trợ lý trả lời chính xác dựa trên tài liệu.
 
         Ngữ cảnh:
-        {context}
+        {final_context}
 
-        Câu hỏi:
-        {query}
+        Câu hỏi: {query}
 
-        Yêu cầu:
-        - Trả lời rõ ràng, có cấu trúc
-        - Nếu thông tin không đủ, hãy nói "không đủ dữ liệu để trả lời chính xác"
-        """
-    response = llm.invoke(prompt)
-    return get_llm_text(response).strip()
+        Hãy trả lời rõ ràng, có cấu trúc, trích dẫn thông tin chính xác từ ngữ cảnh.
+        Nếu không đủ dữ liệu, hãy nói rõ.
+    """
+    answer = get_llm_text(llm.invoke(answer_prompt)).strip()
 
+    # ================== TRẢ VỀ NGUỒN THAM KHẢO ==================
+    sources = []
+    for i, doc in enumerate(all_docs[:15], 1):   # giới hạn số nguồn
+        meta = doc.metadata
+        sources.append({
+            "id": i,
+            "page_content": doc.page_content,
+            "snippet": doc.page_content[:280] + "..." if len(doc.page_content) > 280 else doc.page_content,
+            "page": meta.get("page", "N/A"),
+            "source": meta.get("file_name", meta.get("source", "unknown")),
+            "chunk_index": meta.get("chunk_index", "N/A")
+        })
 
-# =========================
-# 6. BEST-OF-N (tuỳ chọn)
-# =========================
-def best_of_n(llm, query, context, n=3):
-    candidates = []
-
-    for i in range(n):
-        prompt = f"""
-Hãy trả lời câu hỏi theo một cách khác (phiên bản {i+1}).
-
-Ngữ cảnh:
-{context}
-
-Câu hỏi:
-{query}
-
-Yêu cầu:
-- Trả lời tự nhiên
-- Mỗi câu trả lời nên có cách diễn đạt khác nhau
-"""
-        response = llm.invoke(prompt)
-        ans = get_llm_text(response).strip()
-        candidates.append(ans)
-
-    judge_prompt = f"""
-Bạn là một hệ thống đánh giá câu trả lời.
-
-Câu hỏi:
-{query}
-
-Dưới đây là các câu trả lời:
-
-{json.dumps(candidates, ensure_ascii=False, indent=2)}
-
-Hãy chọn câu trả lời tốt nhất.
-
-Chỉ trả về câu trả lời được chọn, không giải thích.
-"""
-    response = llm.invoke(judge_prompt)
-    return get_llm_text(response)
-
-
-# =========================
-# MAIN CO-RAG PIPELINE
-# =========================
-def build_coRag(rag_chain, hybrid_retriever, llm, rewritter_query, use_best_of_n=False):
-
-    print("--------------------Bắt Đầu chạy CORAG ------------------")
-    # 1. Rewrite câu hỏi
-    print("--------------------Tách câu hỏi ------------------")
-    sub_queries = rewrite_query(llm, rewritter_query)
-    print(sub_queries)
-
-    # 2. Lập kế hoạch truy xuất
-    print("--------------------Lập kế hoạch ------------------") # PLAN KHÔNG CẦN THIẾT TRONG CORAG
-    plan = plan_retrieval(llm, rewritter_query, sub_queries)
-    print(plan)
-
-    # 3. Multi-hop retrieval
-    print("--------------------Multi docs ------------------")
-    all_docs = multi_hop_retrieval(hybrid_retriever, sub_queries)
-    print(all_docs)
-
-    # 4. Gộp ngữ cảnh
-    print("--------------------Gộp ngữ cảnh ------------------")
-    context = merge_docs(all_docs)
-    print(context)
-
-    # 5. Sinh câu trả lời
-    if use_best_of_n:
-        answer = best_of_n(llm, rewritter_query, context)
-    else:
-        answer = generate_answer(llm, rewritter_query, context)
-
-    print("--------------------Trả lời ------------------")
-    print(answer)
+    print("-------------------- CoRAG HOÀN THÀNH ------------------")
+    
     return {
-        "query": rewritter_query,
-        "sub_queries": sub_queries,
-        "plan": plan,
-        "context": context,
-        "answer": answer
+        "answer": answer,
+        "sources": sources,
+        "trace": reasoning_trace,      # để debug hoặc hiển thị quá trình suy nghĩ
+        "context": final_context[:8000] # nếu cần
     }

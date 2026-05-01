@@ -998,3 +998,48 @@ body {
 }
 
 /* Các style còn lại của .inline-source-header, .inline-source-content, .btn-small ... giữ nguyên */
+
+/* CoRAG Answer */
+.corag-answer {
+    margin-top: 16px;
+    border: 1px solid #c3d6ff;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #f0f4ff, #fafcff);
+    overflow: hidden;
+}
+
+.corag-header {
+    background: #007BFF;
+    color: white;
+    padding: 10px 14px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.corag-header i {
+    font-size: 16px;
+}
+
+.corag-content {
+    padding: 0px 18px;
+    line-height: 1.75;
+    font-size: 15px;
+    color: #2c3e50;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    list-style-position: outside;
+}
+
+/* Làm đẹp danh sách số trong CoRAG */
+.corag-content ol,
+.corag-content ul {
+    padding-left: 22px;
+    margin: 12px 0;
+}
+
+.corag-content li {
+    margin-bottom: 8px;
+}

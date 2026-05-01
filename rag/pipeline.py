@@ -40,7 +40,7 @@ def query_rewriter(llm, query): # Viết lại câu hỏi
 
 def build_rag_pipeline(
         list_file_path, chunk_size=1000, chunk_overlap=200,
-        top_k=3, fetch_k=15, temperature=0.7,
+        top_k=3, fetch_k=10, temperature=0.7,
         filter_metadata=None # Dùng khi nếu user chọn filter cho multi file
     ):
     global retriever_all_file, per_file_retrievers
@@ -84,7 +84,7 @@ def build_rag_pipeline(
                 chunks=file_chunks,           # chỉ truyền chunks của file đó
                 top_k=top_k,
                 fetch_k=fetch_k,
-                bm25_weight=0.35,  vector_weight=0.65,
+                bm25_weight=0.4,  vector_weight=0.6,
                 filter_metadata={"file_name": file_name}
             )
 
@@ -137,12 +137,14 @@ def build_multi_hop_pipeline(rag_chain, llm, written_query, selected_file_filter
     chat_history = rag_chain.memory.chat_memory.messages
     final_answer = result["answer"]
     all_source = result.get("source_documents", [])
-    if len(final_answer) < 30 and "không" in final_answer.lower():
-        print("Trả lời quá ngắn")
-        return multi_hop_reasoning(rag_chain, llm, written_query, chat_history)
-    if "không có thông tin" in final_answer.lower():
-        print("Không có câu trả lời")
-        return multi_hop_reasoning(rag_chain, llm, written_query, chat_history)
+    # if len(final_answer) < 30 and "không" in final_answer.lower():
+    #     print("Trả lời quá ngắn")
+    #     print(final_answer)
+    #     return multi_hop_reasoning(rag_chain, llm, written_query, chat_history)
+    # if "không có thông tin" in final_answer.lower():
+    #     print("Không có câu trả lời")
+    #     print(final_answer)
+    #     return multi_hop_reasoning(rag_chain, llm, written_query, chat_history)
     
     # # Đánh giá lần 1
     confidence = self_rag_evaluate(llm, written_query, final_answer, all_source)
@@ -150,8 +152,8 @@ def build_multi_hop_pipeline(rag_chain, llm, written_query, selected_file_filter
     print(confidence)
     print(written_query)
     print(final_answer)
-    if confidence < 0.7:
-        return multi_hop_reasoning(rag_chain, llm, written_query, chat_history)
+    # if confidence < 0.5:
+    #     return multi_hop_reasoning(rag_chain, llm, written_query, chat_history)
     
     return final_answer, all_source, confidence
 

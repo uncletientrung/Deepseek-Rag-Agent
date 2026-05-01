@@ -1,0 +1,8 @@
+corag
+
+B1: Tách câu hỏi ra thành sác subquery bằng hàm rewrite_initial_query(llm, query: str)
+        ↓
+for hop in range(max_hops): // Bắt đầu vòng lặp multi-hop
+        ↓
+docs = hybrid_retriever.get_relevant_documents(current_query) // Retrieve để lấy docs dựa trên câu hỏi hiện tại
+        ↓

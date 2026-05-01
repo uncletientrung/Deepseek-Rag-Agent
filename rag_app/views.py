@@ -11,7 +11,7 @@ from rag.pipeline import build_rag_pipeline, query_rewriter, build_multi_hop_pip
 from rag.retriever import get_retriever
 from rag.llm import get_llm
 from rag.hybrid_retriever import create_hybrid_retriever
-from rag.corag import build_coRag
+from rag.corag import iterative_corag
 
 
 rag_chain = None
@@ -25,7 +25,7 @@ all_chunks_global =[]
 uploaded_file_name = []
 # Thêm để xử lý self-RAG
 llm = None
-hybrid_retriever = None
+hybrid_retriever_global = None
 
 def get_or_create_chat_sessions(request):
     if 'chat_sessions' not in request.session:
@@ -66,7 +66,7 @@ def index(request): # <WSGIRequest: GET '/'>
 def upload_pdf(request): # request <WSGIRequest: POST '/upload/'>
     global rag_chain, current_pdf_path, logger
     global vectorstore_global, top_k_global, fetch_k_global
-    global all_chunks_global, uploaded_file_name, llm, hybrid_retriever
+    global all_chunks_global, uploaded_file_name, llm, hybrid_retriever_global
     
     if request.method == "POST":
         start = time.time()
@@ -112,7 +112,7 @@ def upload_pdf(request): # request <WSGIRequest: POST '/upload/'>
             all_chunks_global = chunks
             current_pdf_path = list_file_path  # Đường dẫn pdf
             uploaded_file_name = [os.path.basename(p) for p in list_file_path]
-            hybrid_retriever =hybrid_retriever
+            hybrid_retriever_global =hybrid_retriever
 
 
 
@@ -157,7 +157,7 @@ def ask_question(request): # request <WSGIRequest: POST '/ask/'>
      # urls gọi hàm này thì hàm này nhận request
     global rag_chain, current_pdf_path, logger
     global vectorstore_global, top_k_global, fetch_k_global
-    global all_chunks_global, uploaded_file_name, llm, hybrid_retriever
+    global all_chunks_global, uploaded_file_name, llm, hybrid_retriever_global
     if request.method == "POST":
         start = time.time()
         if rag_chain is None: # Kiểm tra RetrieverQA
@@ -171,15 +171,28 @@ def ask_question(request): # request <WSGIRequest: POST '/ask/'>
             data = json.loads(request.body)
             query = data.get("query") # Lấy câu hỏi
             selected_file_filter = data.get("file_name") # Lấy file filter user chọn  
-            
+            enableCoRAG = data.get("enable_corag") # Nếu coRAG được tích T/F
+            build_coRAG = None
             logger.info(f"User: {query}")
 
             # Xử lý self-RAG
             # rewritter_query = query_rewriter(llm, query) # Viết lại câu hỏi
             # logger.info(f"Câu hỏi viết lại: {rewritter_query}")
             final_answer, all_document, confidence = build_multi_hop_pipeline( rag_chain, llm, query, selected_file_filter) # Lấy final aw và all source
-
-            # build_coRag(rag_chain, hybrid_retriever, llm, rewritter_query, True)
+            print("-----------------------------CORAG-------------------------------")
+            print(enableCoRAG)
+            print("------------------------------------------------aaa------------")
+            if(enableCoRAG == True): 
+                build_coRAG = iterative_corag(
+                    llm=llm, 
+                    hybrid_retriever=hybrid_retriever_global, 
+                    query=query, 
+                    max_hops=5, 
+                    use_best_of_n=False   # hoặc True nếu bạn muốn
+                )
+                print("-----------------------------CORAG-------------------------------")
+                print(build_coRAG["answer"])
+                print("------------------------------------------------------------")
             logger.info(f"Bot: Trả lời thành công")
             logger.info("------------------------------------------------------------")
 
@@ -218,18 +231,20 @@ def ask_question(request): # request <WSGIRequest: POST '/ask/'>
                     "source_path": "data/" + metadata.get("file_name", ""),
                     "chunk_index": metadata.get("chunk_index", "N/A"),
                     "full_text_for_highlight": doc.page_content.strip()
-                })
+                })      
             end = time.time()
 
             print("Thời gian hỏi câu hỏi:", end - start, "giây")
+            print("Thời gian hỏi câu hỏi:", top_k_global, "giây")
             return JsonResponse({
                 "result": final_answer,
                 "confidence": confidence,
-                "rewritten_query": rewritter_query,
                 "pdf_path": current_pdf_path[0] if isinstance(current_pdf_path, list) else current_pdf_path,
-                "source_documents": sources,
+                "source_documents": sources[:top_k_global],
                 "chat_sessions": chat_sessions,
-                "current_chat_id": request.session.get("current_chat_id")
+                "current_chat_id": request.session.get("current_chat_id"),
+                "result_corag_answer": build_coRAG["answer"] if build_coRAG else "",
+                # "result_corag_answer": final_answer
             })
         except Exception as e:
             logger.error(f"Lỗi khi hỏi: {str(e)}")
@@ -287,7 +302,7 @@ def delete_chat(request): # Xóa chat dựa trên id
 def switch_document(request):
     global rag_chain, current_pdf_path, logger
     global vectorstore_global, top_k_global, fetch_k_global
-    global all_chunks_global, uploaded_file_name, llm
+    global all_chunks_global, uploaded_file_name, llm, hybrid_retriever_global
 
     if request.method == "POST":
         logger = create_logger() if logger is None else logger
@@ -331,6 +346,7 @@ def switch_document(request):
             qa_chain, hybrid_retriever, vectorstore, chunks, documents = build_rag_pipeline((list_file_path), chunk_size,chunk_overlap,top_k,fetch_k,temperature)
             rag_chain = qa_chain # RetrieverQA
             llm = get_llm()
+            hybrid_retriever_global =hybrid_retriever
             vectorstore_global = vectorstore
             top_k_global = top_k              
             fetch_k_global = fetch_k

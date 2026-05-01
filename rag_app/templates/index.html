@@ -101,7 +101,13 @@
 
             <!-- Chat Area -->
             <div class="chat-area" id="chatArea"></div>
-
+            
+            <div class="corag-option" style="display: none; align-items: center; font-size: 13px;">
+                <label style="display: flex; align-items: center; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="enableCoRAG" style="width: 18px; height: 18px; accent-color: #007BFF;">
+                    <span><strong>Thêm CoRAG</strong> (Corrective RAG)</span>
+                </label>
+            </div>
             <!-- Input + Status -->
             <div class="input-section">
                 <div class="filter-bar" id="filterBar" style="display:none; margin-bottom: 8px; align-items: center; gap: 8px;">
@@ -120,6 +126,7 @@
                         <option value="">-- Tất cả tài liệu --</option>
                     </select>
                 </div>
+
                 <div class="input-wrapper">
                     <input type="text" class="chat-input" id="questionInput"
                         placeholder="Vui lòng upload tài liệu PDF/ DOCX trước...">
@@ -226,6 +233,7 @@
         const chatArea = document.getElementById("chatArea");
         const uploadBox = document.querySelector('.upload-box');
         const uploadSection = document.querySelector('.upload-section');
+        const coRAGOption = document.querySelector('.corag-option');
         const changeDocumentBtn = document.getElementById('changeDocumentBtn');
         let chatHistory = [];
         let chunk_size = document.getElementById("chunkSize")
@@ -251,6 +259,7 @@
                 askBtn.disabled = false;
                 questionInput.placeholder = "Nhập câu hỏi của bạn về tài liệu PDF...";
                 askBtn.style.backgroundColor = "#007BFF";
+                coRAGOption.style.display = "flex"
             } else {
                 questionInput.disabled = true;
                 askBtn.disabled = true;
@@ -259,7 +268,7 @@
                 } else {
                     questionInput.placeholder = "Không thể gửi tin nhắn khi đang xem lịch sử/ đổi tài liệu";
                 }
-
+                coRAGOption.style.display = "none"
                 askBtn.style.backgroundColor = "#6c757d";
             }
         }
@@ -593,8 +602,8 @@
             if (!question || !currentPdfPath) return;
 
             const fileFilter = document.getElementById("fileFilterSelect").value || null;
-            console.log(fileFilter);
-            
+            const enableCoRAG = document.getElementById("enableCoRAG").checked;
+            console.log(enableCoRAG)
             addMessage("user", question);
             questionInput.value = "";
 
@@ -604,12 +613,15 @@
                 const res = await fetch(`/ask/`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ query: question, file_name: fileFilter})
+                    body: JSON.stringify({ query: question, file_name: fileFilter, enable_corag: enableCoRAG})
                 });
 
                 const data = await res.json();
                 if (data.result) {
                     await streamResponse(aiMessageDiv, data.result);
+                    if (enableCoRAG && data.result_corag_answer) { // Nếu có coRAG
+                        renderCoRAGAnswer(aiMessageDiv, data.result_corag_answer);
+                    }
                     if (data.chat_sessions) {
                         currentChatId = data.current_chat_id;
                         chatHistory = data.chat_sessions;
@@ -628,69 +640,97 @@
             }
         }
 
-    // ==================== HIỂN THỊ NGUỒN INLINE (dưới message AI) ====================
-    function renderSourcesInline(aiMessageDiv, sources, question, answer, pdfPath) {
-        // Xóa sources cũ nếu có (re-render)
-        const existing = aiMessageDiv.querySelector('.inline-sources');
-        if (existing) existing.remove();
-        const contentDiv = aiMessageDiv.querySelector(".message-content");
+        // ==================== HIỂN THỊ NGUỒN INLINE (dưới message AI) ====================
+        function renderSourcesInline(aiMessageDiv, sources, question, answer, pdfPath) {
+            // Xóa sources cũ nếu có (re-render)
+            const existing = aiMessageDiv.querySelector('.inline-sources');
+            if (existing) existing.remove();
+            const contentDiv = aiMessageDiv.querySelector(".message-content");
 
-        const wrapper = document.createElement('div');
-        wrapper.className = 'inline-sources';
+            const wrapper = document.createElement('div');
+            wrapper.className = 'inline-sources';
 
-        // Toggle button
-        const toggle = document.createElement('button');
-        toggle.className = 'inline-sources-toggle';
-        toggle.innerHTML = `<i class="fas fa-book-open"></i> Nguồn tham khảo <span class="inline-sources-badge">${sources.length}</span> <i class="fas fa-chevron-down inline-sources-icon"></i>`;
-        wrapper.appendChild(toggle);
+            // Toggle button
+            const toggle = document.createElement('button');
+            toggle.className = 'inline-sources-toggle';
+            toggle.innerHTML = `<i class="fas fa-book-open"></i> Nguồn tham khảo <span class="inline-sources-badge">${sources.length}</span> <i class="fas fa-chevron-down inline-sources-icon"></i>`;
+            wrapper.appendChild(toggle);
 
-        // Body
-        const body = document.createElement('div');
-        body.className = 'inline-sources-body';
+            // Body
+            const body = document.createElement('div');
+            body.className = 'inline-sources-body';
 
-        sources.forEach(doc => {
-            const snippet = doc.snippet || (doc.page_content || "").substring(0, 200).replace(/\n/g, ' ');
-            const page = doc.page ?? 'N/A';
-            const sourceName = doc.source || '';
+            sources.forEach(doc => {
+                const snippet = doc.snippet || (doc.page_content || "").substring(0, 200).replace(/\n/g, ' ');
+                const page = doc.page ?? 'N/A';
+                const sourceName = doc.source || '';
 
-            const card = document.createElement('div');
-            card.className = 'inline-source-card';
-            card.innerHTML = `
-                <div class="inline-source-header">
-                    <span class="source-badge">Nguồn ${doc.id}</span>
-                    <span class="source-page">Trang <strong>${page}</strong></span>
-                    <small class="inline-source-file">${sourceName}</small>
+                const card = document.createElement('div');
+                card.className = 'inline-source-card';
+                card.innerHTML = `
+                    <div class="inline-source-header">
+                        <span class="source-badge">Nguồn ${doc.id}</span>
+                        <span class="source-page">Trang <strong>${page}</strong></span>
+                        <small class="inline-source-file">${sourceName}</small>
+                    </div>
+                    <div class="inline-source-content" style="background:#f8f9fa;border-left:3px solid #007BFF;padding:10px 14px;border-radius:4px;font-size:13px;line-height:1.6;white-space:pre-wrap">${snippet}</div>
+                    <div class="inline-source-actions">
+                        <button class="btn-small btn-view"><i class="fas fa-eye"></i> Xem đầy đủ</button>
+                        <button class="btn-small btn-hl"><i class="fas fa-highlighter"></i> Highlight PDF</button>
+                    </div>
+                `;
+
+                card.querySelector('.btn-view').addEventListener('click', () => {
+                    showSourceModal(doc.page_content, `Trang ${page}`);
+                });
+                card.querySelector('.btn-hl').addEventListener('click', async () => {
+                    let path = doc.source_path || pdfPath;
+                    if (path && !path.startsWith('data/')) path = 'data/' + path.split(/[/\\]/).pop();
+                    await openPdfWithHighlight(path, parseInt(page), doc.full_text_for_highlight || doc.page_content);
+                });
+
+                body.appendChild(card);
+            });
+
+            wrapper.appendChild(body);
+            contentDiv.appendChild(wrapper);
+
+            // Toggle collapse
+            let open = false;
+            toggle.addEventListener('click', () => {
+                open = !open;
+                body.style.display = open ? 'flex' : 'none';
+                toggle.querySelector('.inline-sources-icon').style.transform = open ? 'rotate(180deg)' : '';
+            });
+        }
+        
+        // ==================== HIỂN THỊ CoRAG ANSWER ====================
+        function renderCoRAGAnswer(aiMessageDiv, coragText) {
+            // Xóa nếu đã có
+            const existing = aiMessageDiv.querySelector('.corag-answer');
+            if (existing) existing.remove();
+
+            const contentDiv = aiMessageDiv.querySelector(".message-content");
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'corag-answer';
+            let formattedHTML = coragText
+                .replace(/\r\n/g, '\n')               
+                .replace(/\n\s*\n/g, '</p><p>')           
+                .replace(/\n/g, '<br>');
+
+            wrapper.innerHTML = `
+                <div class="corag-header">
+                    <i class="fas fa-brain"></i>
+                    <strong>Câu trả lời (CoRAG)</strong>
                 </div>
-                <div class="inline-source-content" style="background:#f8f9fa;border-left:3px solid #007BFF;padding:10px 14px;border-radius:4px;font-size:13px;line-height:1.6;white-space:pre-wrap">${snippet}</div>
-                <div class="inline-source-actions">
-                    <button class="btn-small btn-view"><i class="fas fa-eye"></i> Xem đầy đủ</button>
-                    <button class="btn-small btn-hl"><i class="fas fa-highlighter"></i> Highlight PDF</button>
+                <div class="corag-content">
+                    ${formattedHTML}
                 </div>
             `;
 
-            card.querySelector('.btn-view').addEventListener('click', () => {
-                showSourceModal(doc.page_content, `Trang ${page}`);
-            });
-            card.querySelector('.btn-hl').addEventListener('click', async () => {
-                let path = doc.source_path || pdfPath;
-                if (path && !path.startsWith('data/')) path = 'data/' + path.split(/[/\\]/).pop();
-                await openPdfWithHighlight(path, parseInt(page), doc.full_text_for_highlight || doc.page_content);
-            });
-
-            body.appendChild(card);
-        });
-
-        wrapper.appendChild(body);
-        contentDiv.appendChild(wrapper);
-
-        // Toggle collapse
-        let open = false;
-        toggle.addEventListener('click', () => {
-            open = !open;
-            body.style.display = open ? 'flex' : 'none';
-            toggle.querySelector('.inline-sources-icon').style.transform = open ? 'rotate(180deg)' : '';
-        });
-    }
+            contentDiv.appendChild(wrapper);
+        }
         // ==================== Cập nhật filter dropdown ====================
         function updateFileFilter(fileNames) {
             const select = document.getElementById("fileFilterSelect");
