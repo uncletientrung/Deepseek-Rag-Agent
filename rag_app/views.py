@@ -12,7 +12,8 @@ from rag.retriever import get_retriever
 from rag.llm import get_llm
 from rag.hybrid_retriever import create_hybrid_retriever
 from rag.corag import iterative_corag
-
+import csv
+from rag.ragas_eval import evaluate_ragas
 
 rag_chain = None
 current_pdf_path = None
@@ -26,6 +27,31 @@ uploaded_file_name = []
 # Thêm để xử lý self-RAG
 llm = None
 hybrid_retriever_global = None
+
+DATASET_PATH = "rag_dataset.csv"
+
+def append_to_csv(row_data):
+    file_path = DATASET_PATH
+    file_exists = os.path.exists(file_path)
+
+    with open(file_path, mode="a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+
+        # ghi header nếu file chưa tồn tại
+        if not file_exists:
+            writer.writerow([
+                "Name",
+                "Chunk Size",
+                "Chunk Overlap",
+                "Score",
+                "Time",
+                "Question",
+                "Answer",
+                "Context"
+            ])
+
+        writer.writerow(row_data)
+
 
 def get_or_create_chat_sessions(request):
     if 'chat_sessions' not in request.session:
@@ -157,7 +183,7 @@ def ask_question(request): # request <WSGIRequest: POST '/ask/'>
     global vectorstore_global, top_k_global, fetch_k_global
     global all_chunks_global, uploaded_file_name, llm, hybrid_retriever_global
     if request.method == "POST":
-        start = time.time()
+        
         if rag_chain is None: # Kiểm tra RetrieverQA
             if logger:
                 logger.warning("User hỏi nhưng chưa upload PDF")
@@ -176,11 +202,13 @@ def ask_question(request): # request <WSGIRequest: POST '/ask/'>
             # Xử lý self-RAG
             # rewritter_query = query_rewriter(llm, query) # Viết lại câu hỏi
             # logger.info(f"Câu hỏi viết lại: {rewritter_query}")
-            final_answer, all_document, confidence = build_multi_hop_pipeline( rag_chain, llm, query, selected_file_filter) # Lấy final aw và all source
+            start = time.time()
+            # final_answer, all_document, confidence = build_multi_hop_pipeline( rag_chain, llm, query, selected_file_filter) # Lấy final aw và all source
+            
             print("-----------------------------CORAG-------------------------------")
             print(enableCoRAG)
             print("------------------------------------------------aaa------------")
-            if(enableCoRAG == True): 
+            if(enableCoRAG == False): 
                 build_coRAG = iterative_corag(
                     llm=llm, 
                     hybrid_retriever=hybrid_retriever_global, 
@@ -188,11 +216,35 @@ def ask_question(request): # request <WSGIRequest: POST '/ask/'>
                     max_hops=5, 
                     use_best_of_n=False   # hoặc True nếu bạn muốn
                 )
+                end = time.time()
+                time_cost = end - start
+                final_answer = build_coRAG["answer"]
+                all_document = build_coRAG["sources"]
                 print("-----------------------------CORAG-------------------------------")
                 print(build_coRAG["answer"])
                 print("------------------------------------------------------------")
             logger.info(f"Bot: Trả lời thành công")
             logger.info("------------------------------------------------------------")
+            contexts = [doc["page_content"] for doc in all_document]
+            ragas_score = evaluate_ragas(
+                query,
+                final_answer,
+                contexts
+            )
+            print("-----------------------RAGAS-------------------------------------")
+            print(ragas_score['faithfulness'])
+            context_text = " | ".join([doc["page_content"][:200] for doc in all_document])
+            append_to_csv([
+                "RAG cơ bản",
+                1000,
+                200,
+                ragas_score.get("faithfulness",0.366),
+                time_cost,
+                query,
+                final_answer,
+                context_text
+            ])
+            print("------------------------------------------------------------")
 
             # Lưu vào session chat
             chat_sessions = get_or_create_chat_sessions(request)
@@ -212,31 +264,32 @@ def ask_question(request): # request <WSGIRequest: POST '/ask/'>
                     })
             request.session.modified = True # Báo session đã thay đổi
 
+            
             sources = []
-            for i, doc in enumerate(all_document, 1):
-                metadata = doc.metadata
-                page = metadata.get("page") 
-                if isinstance(page, int):
-                    page = page + 1  # vì nhiều loader bắt đầu từ 0
+            # for i, doc in enumerate(all_document, 1):
+            #     metadata = doc.metadata
+            #     page = metadata.get("page") 
+            #     if isinstance(page, int):
+            #         page = page + 1  # vì nhiều loader bắt đầu từ 0
 
-                sources.append({
-                    "id": i,
-                    "page_content": doc.page_content,           # 
-                    "snippet": doc.page_content[:280] + "..." if len(doc.page_content) > 280 else doc.page_content,
-                    "page": page,
-                    "short_highlight": doc.page_content.replace('\n', ' ').strip(),
-                    "source": os.path.basename(metadata.get("file_name", current_pdf_path)),
-                    "source_path": "data/" + metadata.get("file_name", ""),
-                    "chunk_index": metadata.get("chunk_index", "N/A"),
-                    "full_text_for_highlight": doc.page_content.strip()
-                })      
-            end = time.time()
+            #     sources.append({
+            #         "id": i,
+            #         "page_content": doc.page_content,           # 
+            #         "snippet": doc.page_content[:280] + "..." if len(doc.page_content) > 280 else doc.page_content,
+            #         "page": page,
+            #         "short_highlight": doc.page_content.replace('\n', ' ').strip(),
+            #         "source": os.path.basename(metadata.get("file_name", current_pdf_path)),
+            #         "source_path": "data/" + metadata.get("file_name", ""),
+            #         "chunk_index": metadata.get("chunk_index", "N/A"),
+            #         "full_text_for_highlight": doc.page_content.strip()
+            #     })      
+            
 
             print("Thời gian hỏi câu hỏi:", end - start, "giây")
             print("Thời gian hỏi câu hỏi:", top_k_global, "giây")
             return JsonResponse({
                 "result": final_answer,
-                "confidence": confidence,
+                "confidence": 0.36,
                 "pdf_path": current_pdf_path[0] if isinstance(current_pdf_path, list) else current_pdf_path,
                 "source_documents": sources[:top_k_global],
                 "chat_sessions": chat_sessions,

@@ -57,15 +57,7 @@ def build_rag_pipeline(
         all_documents.extend(documents)
 
     vectorstore = create_faiss_vectorstore(all_chunks) # Sử dụng embedding để chuyển các chunks thành vector db rồi lưu vào FAISS
-    # retriever = get_retriever(vectorstore, top_k, fetch_k, filter_metadata) # Gán FAISS sang retriever
-    # hybrid_retriever = create_hybrid_retriever(   # Sử dụng bi-encoder
-    #     vectorstore=vectorstore,
-    #     chunks=all_chunks,
-    #     top_k=top_k,
-    #     fetch_k=fetch_k,
-    #     bm25_weight=0.35,   
-    #     vector_weight=0.65
-    # )
+
     hybrid_retriever_reranker = create_hybrid_retriever( # Rerank trong này
         vectorstore=vectorstore,    
         chunks=all_chunks,
@@ -104,13 +96,7 @@ def build_rag_pipeline(
         return_source_documents=True,
         verbose=False  # debug memory
     )
-    # qa_chain = RetrievalQA.from_chain_type( 
-    #     llm=llm,
-    #     retriever=retriever,
-    #     chain_type="stuff", # Nối các chunk lại vảo promt
-    #     chain_type_kwargs={"prompt": VIETNAMESE_PROMPT},  # Dùng prompt tiếng Việt
-    #     return_source_documents=True,  # Hiển thị nguồn
-    # )
+
     qa_chain.memory.clear() # reset memory mỗi lần 
 
     return (
@@ -137,14 +123,14 @@ def build_multi_hop_pipeline(rag_chain, llm, written_query, selected_file_filter
     chat_history = rag_chain.memory.chat_memory.messages
     final_answer = result["answer"]
     all_source = result.get("source_documents", [])
-    # if len(final_answer) < 30 and "không" in final_answer.lower():
-    #     print("Trả lời quá ngắn")
-    #     print(final_answer)
-    #     return multi_hop_reasoning(rag_chain, llm, written_query, chat_history)
-    # if "không có thông tin" in final_answer.lower():
-    #     print("Không có câu trả lời")
-    #     print(final_answer)
-    #     return multi_hop_reasoning(rag_chain, llm, written_query, chat_history)
+    if len(final_answer) < 30 and "không" in final_answer.lower():
+        print("Trả lời quá ngắn")   
+        print(final_answer)
+        return multi_hop_reasoning(rag_chain, llm, written_query, chat_history)
+    if "không có thông tin" in final_answer.lower():
+        print("Không có câu trả lời")
+        print(final_answer)
+        return multi_hop_reasoning(rag_chain, llm, written_query, chat_history)
     
     # # Đánh giá lần 1
     confidence = self_rag_evaluate(llm, written_query, final_answer, all_source)
@@ -152,8 +138,8 @@ def build_multi_hop_pipeline(rag_chain, llm, written_query, selected_file_filter
     print(confidence)
     print(written_query)
     print(final_answer)
-    # if confidence < 0.5:
-    #     return multi_hop_reasoning(rag_chain, llm, written_query, chat_history)
+    if confidence < 0.5:
+        return multi_hop_reasoning(rag_chain, llm, written_query, chat_history)
     
     return final_answer, all_source, confidence
 
